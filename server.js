@@ -45,8 +45,11 @@ app.use(cors({
 app.use(express.json());
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  authSource: process.env.MONGODB_AUTH_SOURCE || "admin",
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://vijaykumar:donthaveaim@127.0.0.1:27017/alz";
+const MONGODB_AUTH_SOURCE = process.env.MONGODB_AUTH_SOURCE || "admin";
+
+mongoose.connect(MONGODB_URI, {
+  authSource: MONGODB_AUTH_SOURCE,
 })
 .then(() => console.log("✅ MongoDB Connected"))
 .catch(err => console.error("❌ MongoDB Connection Error:", err));
