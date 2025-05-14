@@ -112,8 +112,10 @@ app.get("/", (req, res) => {
 });
 
 // Start Server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+// Use different ports for development vs production
+const isDev = process.env.NODE_ENV !== 'production';
+const PORT = process.env.PORT || (isDev ? 3001 : 5000);
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`🔗 User login:       /api/auth/login`);
   console.log(`🔗 Caregiver login:  /api/caregivers/login`);
