@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 // Path to the service account key
-const serviceAccountPath = path.join(__dirname, '/Users/sanjeet/Desktop/MindFlow/MindFlow/serviceAccountKey.json');
+const serviceAccountPath = path.join(__dirname, './serviceAccountKey.json');
 
 // Initialize Firebase Admin SDK
 try {
