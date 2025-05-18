@@ -58,6 +58,26 @@ const userSchema = new mongoose.Schema({
   fcmToken: {
     type: String,
     default: null
+  },
+  reminders: {
+    type: Array,
+    default: []
+  },
+  memories: {
+    type: Array,
+    default: []
+  },
+  emergencyContacts: {
+    type: Array,
+    default: []
+  },
+  lastSyncTime: {
+    type: Date,
+    default: Date.now
+  },
+  caregiverEmail: {
+    type: String,
+    default: null
   }
 });
 

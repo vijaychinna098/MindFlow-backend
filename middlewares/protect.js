@@ -18,10 +18,17 @@ const protect = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || "your_secure_secret_here"
-    );
+    // Check if JWT_SECRET is available
+    if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+      console.error("JWT_SECRET is not set in production environment");
+      return res
+        .status(500)
+        .json({ success: false, message: "Server configuration error" });
+    }
+    
+    const jwtSecret = process.env.JWT_SECRET || "your_secure_secret_here";
+    const decoded = jwt.verify(token, jwtSecret);
+    
     // Attach the user data to req.user, excluding the password field
     req.user = await User.findById(decoded.id).select("-password");
     if (!req.user) {
@@ -31,6 +38,7 @@ const protect = async (req, res, next) => {
     }
     next();
   } catch (error) {
+    console.error("JWT verification error:", error.message);
     return res
       .status(401)
       .json({ success: false, message: "Not authorized, token failed" });

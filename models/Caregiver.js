@@ -33,6 +33,10 @@ const caregiverSchema = new mongoose.Schema({
     default: '',
     trim: true
   },
+  profileImage: {
+    type: String,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -44,12 +48,52 @@ const caregiverSchema = new mongoose.Schema({
     trim: true,
     lowercase: true,
   },
+  fcmToken: {
+    type: String,
+    default: null
+  },
+  // Add a new patientData field to store data for multiple patients
+  patientData: {
+    type: Map,
+    of: {
+      reminders: {
+        type: Array,
+        default: []
+      },
+      memories: {
+        type: Array,
+        default: []
+      },
+      emergencyContacts: {
+        type: Array,
+        default: []
+      },
+      homeLocation: {
+        type: Object,
+        default: null
+      },
+      lastSync: {
+        type: Date,
+        default: Date.now
+      }
+    },
+    default: {}
+  },
+  // Keep track of all connected patients (for future multi-patient support)
+  connectedPatients: {
+    type: [String],
+    default: []
+  }
 });
 
 caregiverSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
+  try {
+    this.password = await bcrypt.hash(this.password, 12);
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
 caregiverSchema.methods.correctPassword = async function (candidatePassword) {

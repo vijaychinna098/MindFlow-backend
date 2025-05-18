@@ -10,7 +10,13 @@ const resetCodes = {};
 const emailVerificationCodes = {};
 
 const signToken = id => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || "your_secure_secret_here", {
+  // Check JWT_SECRET availability and log an error if missing in production
+  if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+    console.error("CRITICAL ERROR: JWT_SECRET is not set in production environment!");
+  }
+  
+  const jwtSecret = process.env.JWT_SECRET || "your_secure_secret_here";
+  return jwt.sign({ id }, jwtSecret, {
     expiresIn: "1h"
   });
 };
@@ -20,15 +26,18 @@ router.post("/login", async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
+      console.log("Login attempt failed: Missing email or password");
       return res.status(400).json({ 
         success: false,
         message: "Please provide email and password" 
       });
     }
 
+    console.log(`Login attempt for email: ${email}`);
     const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
     
     if (!user) {
+      console.log(`Login failed: User not found for email ${email}`);
       // This message is shown when the user does not exist in the database
       // This could be because the account was deleted or never existed
       return res.status(401).json({ 
@@ -38,7 +47,9 @@ router.post("/login", async (req, res) => {
     }
     
     // Check password only if user exists
-    if (!(await bcrypt.compare(password, user.password))) {
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      console.log(`Login failed: Invalid password for email ${email}`);
       return res.status(401).json({ 
         success: false,
         message: "Invalid credentials" 
@@ -65,6 +76,7 @@ router.post("/login", async (req, res) => {
       homeLocation: user.homeLocation || null
     };
 
+    console.log(`Login successful for user: ${user.name} (${user.email})`);
     res.status(200).json({ 
       success: true,
       token,
@@ -72,10 +84,22 @@ router.post("/login", async (req, res) => {
     });
     
   } catch (error) {
-    console.error("Login Error:", error);
+    console.error("Login Error Details:", error);
+    // Add more detailed error info
+    let errorMessage = "Login failed";
+    if (error.name === "MongoError" || error.name === "MongoServerError") {
+      errorMessage = "Database connection error";
+      console.error("MongoDB Error:", error.code, error.message);
+    } else if (error.name === "JsonWebTokenError") {
+      errorMessage = "Authentication error";
+      console.error("JWT Error:", error.message);
+    } else if (error.name === "Error") {
+      errorMessage = error.message;
+    }
+    
     res.status(500).json({ 
       success: false,
-      message: "Login failed"
+      message: errorMessage
     });
   }
 });
@@ -198,17 +222,19 @@ router.post("/forgot-password", async (req, res) => {
       code: resetCode,
       expiresAt: Date.now() + 300000 // 5 minutes expiration
     };
-    
-    console.log("Generated reset code for", email, ":", resetCode);
-    console.log("Using email credentials:", process.env.EMAIL_USER);
+
+    // Create email transporter
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+      console.error("EMAIL CONFIGURATION ERROR: Missing email credentials");
+      return res.status(500).json({
+        success: false,
+        message: "Email service not properly configured"
+      });
+    }
 
     try {
-      // Setup enhanced email transporter with more options
       const transporter = nodemailer.createTransport({
         service: "gmail",
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASSWORD
@@ -218,47 +244,61 @@ router.post("/forgot-password", async (req, res) => {
         }
       });
 
-      // Send the email with the reset code
+      // Email content
       const mailOptions = {
         from: {
-          name: "Alzheimer's App",
+          name: "MindFlow App",
           address: process.env.EMAIL_USER
         },
         to: email,
-        subject: "Your Password Reset Code",
+        subject: "Password Reset Code",
+        text: `Your password reset code is: ${resetCode}\n\nThis code will expire in 5 minutes.`,
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
-            <h2 style="color: #005BBB; text-align: center;">Password Reset</h2>
-            <p>You've requested a password reset for your Alzheimer's App account.</p>
-            <p>Your reset code is: <strong style="font-size: 24px; color: #005BBB;">${resetCode}</strong></p>
-            <p><em>This code is valid for 5 minutes.</em></p>
-            <p>If you didn't request a password reset, please ignore this email or contact support.</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333366;">Password Reset</h2>
+            <p>You requested a password reset for your MindFlow account.</p>
+            <p>Your reset code is:</p>
+            <div style="background-color: #f0f0f0; padding: 15px; font-size: 24px; letter-spacing: 5px; text-align: center; font-weight: bold;">${resetCode}</div>
+            <p>This code will expire in 5 minutes.</p>
+            <p>If you didn't request this reset, please ignore this email.</p>
           </div>
         `
       };
 
+      console.log("Sending reset code email...");
       const info = await transporter.sendMail(mailOptions);
-      console.log("Email sent successfully:", info.response);
+      console.log("Reset code email sent:", info.response);
 
-      // Return success response without including the reset code
       res.status(200).json({
         success: true,
-        message: "Reset code sent to email"
+        message: "If the email exists, a reset code has been sent"
       });
     } catch (emailError) {
-      console.error("Email sending error:", emailError);
-      return res.status(500).json({
+      console.error("Error sending reset code email:", emailError);
+      // Don't expose the error details in the response
+      // But do log detailed error information
+      let errorDetail = "Unknown error";
+      if (emailError.code === 'EAUTH') {
+        errorDetail = "Authentication failed - check email credentials";
+      } else if (emailError.code === 'ESOCKET') {
+        errorDetail = "Network connection error";
+      } else if (emailError.code === 'EENVELOPE') {
+        errorDetail = "Invalid envelope parameters";
+      } else {
+        errorDetail = emailError.message;
+      }
+      console.error(`Email sending error details: ${errorDetail}`);
+      
+      res.status(500).json({
         success: false,
-        message: "Failed to send reset code email, please try again",
-        error: emailError.message
+        message: "Failed to send reset code. Please try again later."
       });
     }
   } catch (error) {
-    console.error("Forgot Password Error:", error);
+    console.error("Forgot password error:", error);
     res.status(500).json({
       success: false,
-      message: "Password reset failed",
-      error: error.message
+      message: "Failed to process your request"
     });
   }
 });

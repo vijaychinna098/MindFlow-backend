@@ -188,6 +188,40 @@ router.post('/signup', async (req, res) => {
   }
 });
 
+// Add endpoint to check if caregiver email exists
+router.post('/check-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email is required' 
+      });
+    }
+    
+    const caregiver = await Caregiver.findOne({ email: email.toLowerCase() });
+    
+    if (!caregiver) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Email not found' 
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Email exists'
+    });
+  } catch (err) {
+    console.error('Check Caregiver Email Error:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to check email' 
+    });
+  }
+});
+
 // Login
 router.post('/login', async (req, res) => {
   try {
@@ -782,6 +816,364 @@ router.get('/verify-patient-connection/:caregiverId', async (req, res) => {
   } catch (error) {
     console.error('Verify Patient Connection Error:', error);
     return res.status(500).json({ success: false, message: 'Failed to verify patient connection' });
+  }
+});
+
+// ===== NEW ENDPOINTS FOR CAREGIVER DATA SYNC =====
+
+// Save patient reminders created by caregiver
+router.post('/sync/patient-reminders', async (req, res) => {
+  try {
+    const { caregiverId, patientEmail, reminders } = req.body;
+    
+    if (!caregiverId || !patientEmail || !reminders || !Array.isArray(reminders)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields or invalid data format'
+      });
+    }
+    
+    // First, find the caregiver to verify they exist
+    const caregiver = await Caregiver.findById(caregiverId);
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Next, find the patient to verify they exist
+    const User = require('../models/user');
+    const normalizedPatientEmail = patientEmail.toLowerCase().trim();
+    const patient = await User.findOne({ email: normalizedPatientEmail });
+    
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+    
+    // Save the reminders to the patient's record
+    // Append forPatient field to each reminder
+    const patientReminders = reminders.map(reminder => ({
+      ...reminder,
+      forPatient: normalizedPatientEmail,
+      createdBy: caregiver.email
+    }));
+    
+    // Update the patient with the new reminders
+    // If patient already has reminders, merge them (overwrite with new ones if same ID)
+    let existingReminders = patient.reminders || [];
+    const existingIds = new Set(existingReminders.map(r => r.id));
+    
+    // Keep reminders that don't exist in the new set
+    const remindersToKeep = existingReminders.filter(r => !patientReminders.some(pr => pr.id === r.id));
+    
+    // Combine with new reminders
+    const updatedReminders = [...remindersToKeep, ...patientReminders];
+    
+    // Save to the patient record
+    await User.findByIdAndUpdate(
+      patient._id,
+      { $set: { reminders: updatedReminders } },
+      { new: true }
+    );
+    
+    // Also store in caregiver's record for reference
+    await Caregiver.findByIdAndUpdate(
+      caregiverId,
+      { $set: { [`patientData.${normalizedPatientEmail}.reminders`]: patientReminders } },
+      { new: true }
+    );
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Patient reminders synced successfully',
+      count: patientReminders.length
+    });
+  } catch (error) {
+    console.error('Error syncing patient reminders:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync patient reminders',
+      error: error.message
+    });
+  }
+});
+
+// Save patient memories created by caregiver
+router.post('/sync/patient-memories', async (req, res) => {
+  try {
+    const { caregiverId, patientEmail, memories } = req.body;
+    
+    if (!caregiverId || !patientEmail || !memories || !Array.isArray(memories)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields or invalid data format'
+      });
+    }
+    
+    // First, find the caregiver to verify they exist
+    const caregiver = await Caregiver.findById(caregiverId);
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Next, find the patient to verify they exist
+    const User = require('../models/user');
+    const normalizedPatientEmail = patientEmail.toLowerCase().trim();
+    const patient = await User.findOne({ email: normalizedPatientEmail });
+    
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+    
+    // Save the memories to the patient's record
+    // Append forPatient field to each memory
+    const patientMemories = memories.map(memory => ({
+      ...memory,
+      forPatient: normalizedPatientEmail,
+      createdBy: caregiver.email
+    }));
+    
+    // Update the patient with the new memories
+    // If patient already has memories, merge them (overwrite with new ones if same ID)
+    let existingMemories = patient.memories || [];
+    
+    // Keep memories that don't exist in the new set
+    const memoriesToKeep = existingMemories.filter(m => !patientMemories.some(pm => pm.id === m.id));
+    
+    // Combine with new memories
+    const updatedMemories = [...memoriesToKeep, ...patientMemories];
+    
+    // Save to the patient record
+    await User.findByIdAndUpdate(
+      patient._id,
+      { $set: { memories: updatedMemories } },
+      { new: true }
+    );
+    
+    // Also store in caregiver's record for reference
+    await Caregiver.findByIdAndUpdate(
+      caregiverId,
+      { $set: { [`patientData.${normalizedPatientEmail}.memories`]: patientMemories } },
+      { new: true }
+    );
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Patient memories synced successfully',
+      count: patientMemories.length
+    });
+  } catch (error) {
+    console.error('Error syncing patient memories:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync patient memories',
+      error: error.message
+    });
+  }
+});
+
+// Save patient emergency contacts created by caregiver
+router.post('/sync/patient-contacts', async (req, res) => {
+  try {
+    const { caregiverId, patientEmail, contacts } = req.body;
+    
+    if (!caregiverId || !patientEmail || !contacts || !Array.isArray(contacts)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields or invalid data format'
+      });
+    }
+    
+    // First, find the caregiver to verify they exist
+    const caregiver = await Caregiver.findById(caregiverId);
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Next, find the patient to verify they exist
+    const User = require('../models/user');
+    const normalizedPatientEmail = patientEmail.toLowerCase().trim();
+    const patient = await User.findOne({ email: normalizedPatientEmail });
+    
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+    
+    // Save the contacts to the patient's record
+    // Append forPatient field to each contact
+    const patientContacts = contacts.map(contact => ({
+      ...contact,
+      forPatient: normalizedPatientEmail,
+      createdBy: caregiver.email
+    }));
+    
+    // Update the patient with the new contacts
+    // If patient already has contacts, merge them (overwrite with new ones if same ID)
+    let existingContacts = patient.emergencyContacts || [];
+    
+    // Keep contacts that don't exist in the new set
+    const contactsToKeep = existingContacts.filter(c => !patientContacts.some(pc => pc.id === c.id));
+    
+    // Combine with new contacts
+    const updatedContacts = [...contactsToKeep, ...patientContacts];
+    
+    // Save to the patient record
+    await User.findByIdAndUpdate(
+      patient._id,
+      { $set: { emergencyContacts: updatedContacts } },
+      { new: true }
+    );
+    
+    // Also store in caregiver's record for reference
+    await Caregiver.findByIdAndUpdate(
+      caregiverId,
+      { $set: { [`patientData.${normalizedPatientEmail}.emergencyContacts`]: patientContacts } },
+      { new: true }
+    );
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Patient emergency contacts synced successfully',
+      count: patientContacts.length
+    });
+  } catch (error) {
+    console.error('Error syncing patient emergency contacts:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync patient emergency contacts',
+      error: error.message
+    });
+  }
+});
+
+// Save patient home location set by caregiver
+router.post('/sync/patient-location', async (req, res) => {
+  try {
+    const { caregiverId, patientEmail, homeLocation } = req.body;
+    
+    if (!caregiverId || !patientEmail || !homeLocation) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
+    
+    // First, find the caregiver to verify they exist
+    const caregiver = await Caregiver.findById(caregiverId);
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Next, find the patient to verify they exist
+    const User = require('../models/user');
+    const normalizedPatientEmail = patientEmail.toLowerCase().trim();
+    const patient = await User.findOne({ email: normalizedPatientEmail });
+    
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+    
+    // Save the home location to the patient's record
+    await User.findByIdAndUpdate(
+      patient._id,
+      { $set: { homeLocation: homeLocation } },
+      { new: true }
+    );
+    
+    // Also store in caregiver's record for reference
+    await Caregiver.findByIdAndUpdate(
+      caregiverId,
+      { $set: { [`patientData.${normalizedPatientEmail}.homeLocation`]: homeLocation } },
+      { new: true }
+    );
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Patient home location synced successfully'
+    });
+  } catch (error) {
+    console.error('Error syncing patient home location:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync patient home location',
+      error: error.message
+    });
+  }
+});
+
+// Get all patient data for caregiver
+router.get('/sync/patient-data/:patientEmail', async (req, res) => {
+  try {
+    const { patientEmail } = req.params;
+    const { caregiverId } = req.query;
+    
+    if (!caregiverId || !patientEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields'
+      });
+    }
+    
+    // First, find the caregiver to verify they exist
+    const caregiver = await Caregiver.findById(caregiverId);
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Next, find the patient to verify they exist
+    const User = require('../models/user');
+    const normalizedPatientEmail = patientEmail.toLowerCase().trim();
+    const patient = await User.findOne({ email: normalizedPatientEmail });
+    
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+    
+    // Return all patient data
+    return res.status(200).json({
+      success: true,
+      patientData: {
+        reminders: patient.reminders || [],
+        memories: patient.memories || [],
+        emergencyContacts: patient.emergencyContacts || [],
+        homeLocation: patient.homeLocation || null
+      }
+    });
+  } catch (error) {
+    console.error('Error getting patient data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get patient data',
+      error: error.message
+    });
   }
 });
 
