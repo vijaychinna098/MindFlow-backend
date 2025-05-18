@@ -425,4 +425,64 @@ router.post('/sync/homeLocation', protect, async (req, res) => {
   }
 });
 
+// Sync user profile data
+router.post('/sync/profile', protect, async (req, res) => {
+  try {
+    const { profile } = req.body;
+    const userId = req.user.id;
+    
+    if (!profile) {
+      return res.status(400).json({
+        success: false,
+        message: 'Profile data must be provided'
+      });
+    }
+    
+    // Extract profile fields
+    const {
+      name,
+      phone,
+      address,
+      age,
+      medicalInfo,
+      profileImageUrl
+    } = profile;
+    
+    // Create update object with only provided fields
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (phone !== undefined) updateData.phone = phone;
+    if (address !== undefined) updateData.address = address;
+    if (age !== undefined) updateData.age = age;
+    if (medicalInfo) updateData.medicalInfo = medicalInfo;
+    if (profileImageUrl) updateData.profileImage = profileImageUrl;
+    
+    // Update the user profile
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Profile data synced successfully'
+    });
+  } catch (error) {
+    console.error('Error syncing profile data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync profile data',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;

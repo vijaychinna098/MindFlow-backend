@@ -1177,4 +1177,101 @@ router.get('/sync/patient-data/:patientEmail', async (req, res) => {
   }
 });
 
+// Sync caregiver profile data
+router.post('/sync/profile', async (req, res) => {
+  try {
+    const { profile, caregiverId } = req.body;
+    
+    if (!profile || !caregiverId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Profile data and caregiver ID must be provided'
+      });
+    }
+    
+    // Find the caregiver
+    const caregiver = await Caregiver.findById(caregiverId);
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Extract profile fields
+    const {
+      name,
+      phone,
+      profileImageUrl
+    } = profile;
+    
+    // Create update object with only provided fields
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (phone !== undefined) updateData.phone = phone;
+    if (profileImageUrl) updateData.profileImage = profileImageUrl;
+    
+    // Update the caregiver profile
+    const updatedCaregiver = await Caregiver.findByIdAndUpdate(
+      caregiverId,
+      { $set: updateData },
+      { new: true }
+    );
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Caregiver profile data synced successfully'
+    });
+  } catch (error) {
+    console.error('Error syncing caregiver profile data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync caregiver profile data',
+      error: error.message
+    });
+  }
+});
+
+// Get caregiver profile data
+router.get('/profile', async (req, res) => {
+  try {
+    const { caregiverId } = req.query;
+    
+    if (!caregiverId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Caregiver ID must be provided'
+      });
+    }
+    
+    // Find the caregiver
+    const caregiver = await Caregiver.findById(caregiverId);
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Return profile data (excluding sensitive info)
+    return res.status(200).json({
+      success: true,
+      data: {
+        name: caregiver.name,
+        email: caregiver.email,
+        phone: caregiver.phone || '',
+        profileImage: caregiver.profileImage || null,
+        patientEmail: caregiver.patientEmail || null
+      }
+    });
+  } catch (error) {
+    console.error('Error getting caregiver profile:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get caregiver profile',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
