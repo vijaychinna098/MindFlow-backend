@@ -695,23 +695,90 @@ router.get('/verify-connection/:caregiverId/:patientEmail', async (req, res) => 
 // Delete Account endpoint
 router.post('/deleteAccount', async (req, res) => {
   try {
-    const { caregiverId } = req.body;
+    const { caregiverId, caregiverEmail } = req.body;
     
-    if (!caregiverId) {
+    // We need either caregiverId or caregiverEmail
+    if (!caregiverId && !caregiverEmail) {
       return res.status(400).json({
         success: false,
-        message: "Caregiver ID is required"
+        message: "Either caregiver ID or email is required"
       });
     }
 
-    // Find and delete the caregiver
-    const deletedCaregiver = await Caregiver.findByIdAndDelete(caregiverId);
+    let deletedCaregiver;
+    
+    // Try to find and delete the caregiver by ID first
+    if (caregiverId) {
+      console.log(`Attempting to delete caregiver by ID: ${caregiverId}`);
+      deletedCaregiver = await Caregiver.findByIdAndDelete(caregiverId);
+      
+      if (deletedCaregiver) {
+        console.log(`Successfully deleted caregiver with ID: ${caregiverId}`);
+      } else {
+        console.log(`No caregiver found with ID: ${caregiverId}`);
+      }
+    }
+    
+    // If not found by ID, try by email
+    if (!deletedCaregiver && caregiverEmail) {
+      console.log(`Attempting to delete caregiver by email: ${caregiverEmail}`);
+      deletedCaregiver = await Caregiver.findOneAndDelete({ email: caregiverEmail.toLowerCase().trim() });
+      
+      if (deletedCaregiver) {
+        console.log(`Successfully deleted caregiver with email: ${caregiverEmail}`);
+      } else {
+        console.log(`No caregiver found with email: ${caregiverEmail}`);
+      }
+    }
     
     if (!deletedCaregiver) {
       return res.status(404).json({
         success: false,
-        message: "Caregiver not found"
+        message: "Caregiver not found. Please ensure the account exists."
       });
+    }
+
+    // Also clear any patient connections
+    try {
+      // Remove any associations to this caregiver in other collections
+      const normalizedEmail = deletedCaregiver.email.toLowerCase().trim();
+      console.log(`Checking for patient connections to remove for caregiver: ${normalizedEmail}`);
+      
+      // Update any users that have this caregiver connected
+      const User = require('../models/user');
+      
+      // First, find all patients connected to this caregiver
+      const connectedPatients = await User.find({ caregiverEmail: normalizedEmail });
+      console.log(`Found ${connectedPatients.length} patients connected to this caregiver`);
+      
+      // Remove caregiver references from each patient
+      const result = await User.updateMany(
+        { caregiverEmail: normalizedEmail },
+        { $unset: { caregiverEmail: "", caregiverName: "", caregiverId: "" } }
+      );
+      
+      if (result.modifiedCount > 0) {
+        console.log(`Removed caregiver association from ${result.modifiedCount} patients`);
+      }
+      
+      // Also remove from patientData in other caregivers if this caregiver shared data
+      await Caregiver.updateMany(
+        { [`patientData.${normalizedEmail}`]: { $exists: true } },
+        { $unset: { [`patientData.${normalizedEmail}`]: "" } }
+      );
+      
+      // Extra cleanup for any patients this caregiver was connected to
+      if (deletedCaregiver.patientEmail) {
+        // Find and clean up the patient that was directly connected
+        console.log(`Cleaning up direct connection with patient: ${deletedCaregiver.patientEmail}`);
+        await User.updateOne(
+          { email: deletedCaregiver.patientEmail.toLowerCase().trim() },
+          { $unset: { caregiverEmail: "", caregiverName: "", caregiverId: "" } }
+        );
+      }
+    } catch (cleanupError) {
+      // Log but don't fail the whole operation
+      console.error("Error cleaning up caregiver connections:", cleanupError);
     }
 
     res.status(200).json({
@@ -722,7 +789,8 @@ router.post('/deleteAccount', async (req, res) => {
     console.error("Caregiver Delete Account Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to delete caregiver account"
+      message: "Failed to delete caregiver account",
+      error: error.message
     });
   }
 });

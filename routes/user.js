@@ -4,6 +4,26 @@ const router = express.Router();
 const User = require('../models/user');
 const protect = require('../middlewares/protect'); // Adjust the path as necessary
 
+// Add a ping endpoint for connectivity check (must be at the beginning for proper routing)
+router.get('/ping', (req, res) => {
+  console.log("Server ping received");
+  res.json({
+    success: true,
+    timestamp: new Date().toISOString(),
+    message: 'Server is available'
+  });
+});
+
+// Also add a root level ping for additional reliability
+router.get('/', (req, res) => {
+  console.log("Root path ping received");
+  res.json({
+    success: true,
+    timestamp: new Date().toISOString(),
+    message: 'User API is available'
+  });
+});
+
 // Protected update endpoint: only the authenticated user can update their own data
 router.put('/', protect, async (req, res) => {
   try {
@@ -481,6 +501,98 @@ router.post('/sync/profile', protect, async (req, res) => {
       success: false,
       message: 'Failed to sync profile data',
       error: error.message
+    });
+  }
+});
+
+// ===== USER LOOKUP BY EMAIL =====
+
+// Get user profile by email (used by caregivers to get accurate patient names)
+router.get('/profile/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid email is required'
+      });
+    }
+    
+    // Normalize email to lowercase for case-insensitive matching
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`Looking up user profile by email: ${normalizedEmail}`);
+    
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      console.log(`User not found with email: ${normalizedEmail}`);
+      return res.status(404).json({
+        success: false,
+        message: 'User not found with this email'
+      });
+    }
+    
+    console.log(`User found: ${user.name} (${user.email})`);
+    
+    // Return a sanitized user object with only the needed fields
+    res.json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      profileImage: user.profileImage,
+      phone: user.phone || ''
+    });
+  } catch (error) {
+    console.error('Error looking up user by email:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while looking up user profile'
+    });
+  }
+});
+
+// Lookup user info by email (combined endpoint for patient verification)
+router.get('/lookup/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid email is required'
+      });
+    }
+    
+    // Normalize email to lowercase for case-insensitive matching
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`Looking up user by email: ${normalizedEmail}`);
+    
+    // Try to find user in the database
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      console.log(`User not found with email: ${normalizedEmail}`);
+      return res.status(404).json({
+        success: false,
+        message: 'User not found with this email'
+      });
+    }
+    
+    console.log(`User found: ${user.name}`);
+    
+    // Return minimal user info
+    res.json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      profileImage: user.profileImage
+    });
+  } catch (error) {
+    console.error('Error looking up user by email:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
     });
   }
 });
