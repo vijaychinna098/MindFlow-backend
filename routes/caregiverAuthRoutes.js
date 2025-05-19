@@ -1342,4 +1342,81 @@ router.get('/profile', async (req, res) => {
   }
 });
 
+// Get connected patients for a caregiver
+router.get('/:caregiverId/patients', async (req, res) => {
+  try {
+    const { caregiverId } = req.params;
+    
+    if (!caregiverId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Caregiver ID is required'
+      });
+    }
+    
+    // Find the caregiver
+    const caregiver = await Caregiver.findById(caregiverId);
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Get the list of connected patients from the caregiver record
+    const connectedPatientEmails = caregiver.connectedPatients || [];
+    
+    if (connectedPatientEmails.length === 0) {
+      return res.status(200).json({
+        success: true,
+        patients: [],
+        message: 'No connected patients found'
+      });
+    }
+    
+    console.log(`Found ${connectedPatientEmails.length} connected patients for caregiver ${caregiver.email}`);
+    
+    // Find the patient data for each connected patient
+    const User = require('../models/user');
+    const patientPromises = connectedPatientEmails.map(async (patientEmail) => {
+      try {
+        const user = await User.findOne({ email: patientEmail.toLowerCase() });
+        
+        if (!user) {
+          console.log(`WARNING: Patient with email ${patientEmail} not found in database`);
+          return null;
+        }
+        
+        // Return a stripped down patient object with essential fields
+        return {
+          id: user._id,
+          name: user.name,
+          email: user.email.toLowerCase(),
+          profileImage: user.profileImage || null
+        };
+      } catch (patientError) {
+        console.error(`Error finding patient ${patientEmail}:`, patientError);
+        return null;
+      }
+    });
+    
+    // Wait for all patient lookups to complete
+    const patients = (await Promise.all(patientPromises))
+      .filter(patient => patient !== null); // Remove any patients that weren't found
+    
+    return res.status(200).json({
+      success: true,
+      patients,
+      message: 'Successfully retrieved connected patients'
+    });
+  } catch (error) {
+    console.error('Error getting connected patients:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get connected patients',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
