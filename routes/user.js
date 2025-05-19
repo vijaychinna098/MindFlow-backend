@@ -47,6 +47,291 @@ router.put('/', protect, async (req, res) => {
   }
 });
 
+// SYNC ENDPOINTS - SERVER-BASED STORAGE
+
+// Get user data by email (for cross-device access)
+router.get('/sync/email/:email', protect, async (req, res) => {
+  try {
+    const { email } = req.params;
+    // Normalize email before searching
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Only allow users to access their own data or caregivers with appropriate connection
+    if (req.user.email.toLowerCase() !== normalizedEmail && !req.user.patientEmail) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to access this data'
+      });
+    }
+    
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false, 
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phone: user.phone || '',
+        address: user.address || '',
+        age: user.age || '',
+        medicalInfo: user.medicalInfo || {
+          conditions: '',
+          medications: '',
+          allergies: '',
+          bloodType: ''
+        },
+        homeLocation: user.homeLocation,
+        reminders: user.reminders || [],
+        memories: user.memories || [],
+        emergencyContacts: user.emergencyContacts || [],
+        caregiverEmail: user.caregiverEmail || null
+      }
+    });
+  } catch (error) {
+    console.error('Get user by email error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user data'
+    });
+  }
+});
+
+// Sync reminders endpoint
+router.get('/sync/reminders', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      reminders: user.reminders || []
+    });
+  } catch (error) {
+    console.error('Get reminders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get reminders'
+    });
+  }
+});
+
+// Update reminders endpoint
+router.post('/sync/reminders', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { reminders } = req.body;
+    
+    if (!Array.isArray(reminders)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reminders must be an array'
+      });
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { reminders, lastSyncTime: Date.now() },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      reminders: user.reminders
+    });
+  } catch (error) {
+    console.error('Update reminders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update reminders'
+    });
+  }
+});
+
+// Sync memories endpoint
+router.get('/sync/memories', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      memories: user.memories || []
+    });
+  } catch (error) {
+    console.error('Get memories error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get memories'
+    });
+  }
+});
+
+// Update memories endpoint
+router.post('/sync/memories', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { memories } = req.body;
+    
+    if (!Array.isArray(memories)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Memories must be an array'
+      });
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { memories, lastSyncTime: Date.now() },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      memories: user.memories
+    });
+  } catch (error) {
+    console.error('Update memories error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update memories'
+    });
+  }
+});
+
+// Sync emergency contacts endpoint
+router.get('/sync/contacts', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      contacts: user.emergencyContacts || []
+    });
+  } catch (error) {
+    console.error('Get contacts error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get emergency contacts'
+    });
+  }
+});
+
+// Update emergency contacts endpoint
+router.post('/sync/contacts', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { contacts } = req.body;
+    
+    if (!Array.isArray(contacts)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Contacts must be an array'
+      });
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { emergencyContacts: contacts, lastSyncTime: Date.now() },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      contacts: user.emergencyContacts
+    });
+  } catch (error) {
+    console.error('Update contacts error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update emergency contacts'
+    });
+  }
+});
+
+// Sync home location endpoint
+router.post('/sync/homeLocation', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { homeLocation } = req.body;
+    
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { homeLocation, lastSyncTime: Date.now() },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      homeLocation: user.homeLocation
+    });
+  } catch (error) {
+    console.error('Update home location error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update home location'
+    });
+  }
+});
+
 // Get user activities by user ID
 // IMPORTANT: This route must be defined BEFORE the '/:userId' route
 router.get('/activities/:userId', protect, async (req, res) => {
@@ -202,309 +487,6 @@ router.put('/profile', protect, async (req, res) => {
   }
 });
 
-// ===== NEW ENDPOINTS FOR DATA SYNC =====
-
-// Save reminders for a user
-router.post('/sync/reminders', protect, async (req, res) => {
-  try {
-    const { reminders } = req.body;
-    const userId = req.user.id;
-    
-    if (!reminders || !Array.isArray(reminders)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Reminders must be provided as an array'
-      });
-    }
-    
-    // Update user with reminders in a new field
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { $set: { reminders: reminders } },
-      { new: true }
-    );
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Reminders synced successfully',
-      count: reminders.length
-    });
-  } catch (error) {
-    console.error('Error syncing reminders:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to sync reminders',
-      error: error.message
-    });
-  }
-});
-
-// Get reminders for a user
-router.get('/sync/reminders', protect, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    return res.status(200).json({
-      success: true,
-      reminders: user.reminders || []
-    });
-  } catch (error) {
-    console.error('Error getting reminders:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to get reminders',
-      error: error.message
-    });
-  }
-});
-
-// Save memories for a user
-router.post('/sync/memories', protect, async (req, res) => {
-  try {
-    const { memories } = req.body;
-    const userId = req.user.id;
-    
-    if (!memories || !Array.isArray(memories)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Memories must be provided as an array'
-      });
-    }
-    
-    // Update user with memories in a new field
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { $set: { memories: memories } },
-      { new: true }
-    );
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Memories synced successfully',
-      count: memories.length
-    });
-  } catch (error) {
-    console.error('Error syncing memories:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to sync memories',
-      error: error.message
-    });
-  }
-});
-
-// Get memories for a user
-router.get('/sync/memories', protect, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    return res.status(200).json({
-      success: true,
-      memories: user.memories || []
-    });
-  } catch (error) {
-    console.error('Error getting memories:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to get memories',
-      error: error.message
-    });
-  }
-});
-
-// Save emergency contacts for a user
-router.post('/sync/contacts', protect, async (req, res) => {
-  try {
-    const { contacts } = req.body;
-    const userId = req.user.id;
-    
-    if (!contacts || !Array.isArray(contacts)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Contacts must be provided as an array'
-      });
-    }
-    
-    // Update user with contacts in a new field
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { $set: { emergencyContacts: contacts } },
-      { new: true }
-    );
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Emergency contacts synced successfully',
-      count: contacts.length
-    });
-  } catch (error) {
-    console.error('Error syncing emergency contacts:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to sync emergency contacts',
-      error: error.message
-    });
-  }
-});
-
-// Get emergency contacts for a user
-router.get('/sync/contacts', protect, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    return res.status(200).json({
-      success: true,
-      contacts: user.emergencyContacts || []
-    });
-  } catch (error) {
-    console.error('Error getting emergency contacts:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to get emergency contacts',
-      error: error.message
-    });
-  }
-});
-
-// Save home location for a user
-router.post('/sync/homeLocation', protect, async (req, res) => {
-  try {
-    const { homeLocation } = req.body;
-    const userId = req.user.id;
-    
-    // Update user with home location
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { $set: { homeLocation: homeLocation } },
-      { new: true }
-    );
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Home location synced successfully'
-    });
-  } catch (error) {
-    console.error('Error syncing home location:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to sync home location',
-      error: error.message
-    });
-  }
-});
-
-// Sync user profile data
-router.post('/sync/profile', protect, async (req, res) => {
-  try {
-    const { profile } = req.body;
-    const userId = req.user.id;
-    
-    if (!profile) {
-      return res.status(400).json({
-        success: false,
-        message: 'Profile data must be provided'
-      });
-    }
-    
-    // Extract profile fields
-    const {
-      name,
-      phone,
-      address,
-      age,
-      medicalInfo,
-      profileImageUrl
-    } = profile;
-    
-    // Create update object with only provided fields
-    const updateData = {};
-    if (name) updateData.name = name;
-    if (phone !== undefined) updateData.phone = phone;
-    if (address !== undefined) updateData.address = address;
-    if (age !== undefined) updateData.age = age;
-    if (medicalInfo) updateData.medicalInfo = medicalInfo;
-    if (profileImageUrl) updateData.profileImage = profileImageUrl;
-    
-    // Update the user profile
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { $set: updateData },
-      { new: true }
-    );
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Profile data synced successfully'
-    });
-  } catch (error) {
-    console.error('Error syncing profile data:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to sync profile data',
-      error: error.message
-    });
-  }
-});
-
 // ===== USER LOOKUP BY EMAIL =====
 
 // Get user profile by email (used by caregivers to get accurate patient names)
@@ -593,6 +575,144 @@ router.get('/lookup/:email', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error'
+    });
+  }
+});
+
+// Connect caregiver to patient
+router.post('/connect/caregiver', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { caregiverEmail } = req.body;
+    
+    if (!caregiverEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'Caregiver email is required'
+      });
+    }
+    
+    // Find the user (patient)
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Find the caregiver by email
+    const caregiver = await require('../models/Caregiver').findOne({ email: caregiverEmail.toLowerCase() });
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Update patient with caregiver email
+    user.caregiverEmail = caregiverEmail.toLowerCase();
+    await user.save();
+    
+    // Update caregiver with patient connection
+    if (!caregiver.connectedPatients.includes(user.email)) {
+      caregiver.connectedPatients.push(user.email);
+    }
+    
+    if (!caregiver.patientEmail || caregiver.patientEmail === null) {
+      caregiver.patientEmail = user.email; // Set as primary patient if none exists
+    }
+    
+    // Initialize patient data in the caregiver's patientData map if it doesn't exist
+    if (!caregiver.patientData.has(user.email)) {
+      caregiver.patientData.set(user.email, {
+        reminders: [],
+        memories: [],
+        emergencyContacts: [],
+        homeLocation: null,
+        lastSync: new Date()
+      });
+    }
+    
+    await caregiver.save();
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Connected patient with caregiver successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error connecting caregiver:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to connect caregiver',
+      error: error.message
+    });
+  }
+});
+
+// Get patient data for caregiver
+router.get('/patient/:patientEmail', protect, async (req, res) => {
+  try {
+    const caregiverId = req.user.id;
+    const { patientEmail } = req.params;
+    
+    // Find the caregiver
+    const caregiver = await require('../models/Caregiver').findById(caregiverId);
+    if (!caregiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Caregiver not found'
+      });
+    }
+    
+    // Check if caregiver is connected to this patient
+    if (!caregiver.connectedPatients.includes(patientEmail.toLowerCase())) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to access this patient data'
+      });
+    }
+    
+    // Find the patient
+    const patient = await User.findOne({ email: patientEmail.toLowerCase() });
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+    
+    // Return patient data
+    return res.status(200).json({
+      success: true,
+      patient: {
+        id: patient._id,
+        name: patient.name,
+        email: patient.email,
+        profileImage: patient.profileImage,
+        phone: patient.phone || '',
+        address: patient.address || '',
+        age: patient.age || '',
+        medicalInfo: patient.medicalInfo || {
+          conditions: '',
+          medications: '',
+          allergies: '',
+          bloodType: ''
+        },
+        homeLocation: patient.homeLocation,
+        reminders: patient.reminders || [],
+        memories: patient.memories || [],
+        emergencyContacts: patient.emergencyContacts || []
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error getting patient data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get patient data',
+      error: error.message
     });
   }
 });
