@@ -6,6 +6,9 @@ const nodemailer = require("nodemailer");
 const authRoutes = require("./routes/authRoutes");
 const caregiverAuthRoutes = require("./routes/caregiverAuthRoutes"); // ✅ NEW
 const notificationRoutes = require("./routes/notificationRoutes"); // Add notification routes
+const usersRoutes = require("./routes/usersRoutes"); // Add users routes
+const profileRoutes = require("./routes/profileRoutes"); // Add profile routes
+const syncRoutes = require("./routes/syncRoutes"); // Add sync routes
 const User = require("./models/user"); // Import User model directly
 const protect = require("./middlewares/protect"); // Import the protect middleware
 const emailRoutes = require("./routes/emailRoutes");
@@ -97,17 +100,171 @@ app.get("/api/test-email", async (req, res) => {
 });
 
 // Routes
-app.use("/api/auth", authRoutes);                         // User auth
-app.use("/api/caregivers", caregiverAuthRoutes);      // ✅ Caregiver auth
+app.use("/api/auth", authRoutes);                          // User auth
+app.use("/api/caregivers", caregiverAuthRoutes);           // ✅ Caregiver auth
 app.use("/api/notifications", notificationRoutes);         // Notification services
-app.use("/api/email", emailRoutes);
-app.use("/api/user", require("./routes/user"));           // ✅ User routes for getting user info and activities
+app.use("/api/email", emailRoutes);                        // Email services
+app.use("/api/users", usersRoutes);                        // Users routes for profiles and updates
+app.use("/api/profile", profileRoutes);                    // Profile routes for cloud storage
+app.use("/api/user", require("./routes/user"));            // ✅ User routes for getting user info and activities
+app.use("/api/sync", syncRoutes);                          // Sync routes
 
 // DIRECT ACCOUNT DELETION ENDPOINT - REMOVED (now in authRoutes.js)
 
 // Ping endpoint for testing connectivity
 app.get("/ping", (req, res) => {
   res.status(200).json({ message: "Server is reachable", timestamp: new Date().toISOString() });
+});
+
+// API endpoint for MongoDB profile storage
+app.post("/api/user/store-mongodb", async (req, res) => {
+  try {
+    const userData = req.body;
+    
+    if (!userData || !userData.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user data provided'
+      });
+    }
+    
+    const email = userData.email.toLowerCase().trim();
+    console.log(`MongoDB storage request for user: ${email}`);
+    
+    // Check if user exists
+    let user = await User.findOne({ email });
+    
+    if (user) {
+      console.log(`Updating existing user: ${email}`);
+      
+      // Special handling for profile image to prevent data loss
+      if (!userData.profileImage && user.profileImage) {
+        console.log('Client missing profile image, preserving existing image');
+        userData.profileImage = user.profileImage;
+      }
+      
+      // Special handling for name to prevent inconsistencies
+      if (!userData.name && user.name) {
+        console.log('Client missing name, preserving existing name');
+        userData.name = user.name;
+      } else if (userData.name && userData.name !== user.name) {
+        console.log(`Name change detected: "${user.name}" -> "${userData.name}"`);
+      }
+      
+      // Update with merged fields
+      user = await User.findOneAndUpdate(
+        { email },
+        { 
+          $set: {
+            ...userData,
+            lastSyncTime: new Date()
+          }
+        },
+        { new: true }
+      );
+    } else {
+      console.log(`Creating new user: ${email}`);
+      user = await User.create({
+        ...userData,
+        email,
+        lastSyncTime: new Date()
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      profile: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phone: user.phone || '',
+        address: user.address || '',
+        age: user.age || '',
+        medicalInfo: user.medicalInfo || {
+          conditions: '',
+          medications: '',
+          allergies: '',
+          bloodType: ''
+        },
+        homeLocation: user.homeLocation,
+        reminders: user.reminders || [],
+        memories: user.memories || [],
+        emergencyContacts: user.emergencyContacts || [],
+        caregiverEmail: user.caregiverEmail,
+        lastSyncTime: user.lastSyncTime
+      }
+    });
+  } catch (error) {
+    console.error('MongoDB storage error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to store user profile',
+      error: error.message
+    });
+  }
+});
+
+// API endpoint for getting MongoDB profiles by email
+app.get("/api/user/get-mongodb/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+    
+    // Normalize email for case-insensitive lookup
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`MongoDB profile request for user: ${normalizedEmail}`);
+    
+    // Find the user
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Return full profile data
+    res.status(200).json({
+      success: true,
+      profile: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phone: user.phone || '',
+        address: user.address || '',
+        age: user.age || '',
+        medicalInfo: user.medicalInfo || {
+          conditions: '',
+          medications: '',
+          allergies: '',
+          bloodType: ''
+        },
+        homeLocation: user.homeLocation,
+        reminders: user.reminders || [],
+        memories: user.memories || [],
+        emergencyContacts: user.emergencyContacts || [],
+        caregiverEmail: user.caregiverEmail,
+        lastSyncTime: user.lastSyncTime,
+        lastUpdatedAt: user.updatedAt || new Date()
+      }
+    });
+  } catch (error) {
+    console.error('MongoDB profile retrieval error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve user profile',
+      error: error.message
+    });
+  }
 });
 
 // Health check endpoint

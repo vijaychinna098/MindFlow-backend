@@ -24,6 +24,195 @@ router.get('/', (req, res) => {
   });
 });
 
+// New MongoDB storage endpoint for mobile profile storage
+router.post('/store-mongodb', async (req, res) => {
+  try {
+    const userData = req.body;
+    
+    if (!userData || !userData.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user data provided'
+      });
+    }
+    
+    const email = userData.email.toLowerCase().trim();
+    console.log(`MongoDB storage request for user: ${email}`);
+    
+    // Check if user exists
+    let user = await User.findOne({ email });
+    
+    if (user) {
+      console.log(`Updating existing user: ${email}`);
+      
+      // Special handling for profile image to prevent data loss
+      if (!userData.profileImage && user.profileImage) {
+        console.log('Client missing profile image, preserving existing image');
+        userData.profileImage = user.profileImage;
+      }
+      
+      // Special handling for name to prevent inconsistencies
+      if (!userData.name && user.name) {
+        console.log('Client missing name, preserving existing name');
+        userData.name = user.name;
+      } else if (userData.name && userData.name !== user.name) {
+        console.log(`Name change detected: "${user.name}" -> "${userData.name}"`);
+      }
+      
+      // Update with merged fields
+      user = await User.findOneAndUpdate(
+        { email },
+        { 
+          $set: {
+            ...userData,
+            lastSyncTime: new Date()
+          }
+        },
+        { new: true }
+      );
+    } else {
+      console.log(`Creating new user: ${email}`);
+      user = await User.create({
+        ...userData,
+        email,
+        lastSyncTime: new Date()
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      profile: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phone: user.phone || '',
+        address: user.address || '',
+        age: user.age || '',
+        medicalInfo: user.medicalInfo || {
+          conditions: '',
+          medications: '',
+          allergies: '',
+          bloodType: ''
+        },
+        homeLocation: user.homeLocation,
+        reminders: user.reminders || [],
+        memories: user.memories || [],
+        emergencyContacts: user.emergencyContacts || [],
+        caregiverEmail: user.caregiverEmail,
+        lastSyncTime: user.lastSyncTime
+      }
+    });
+  } catch (error) {
+    console.error('MongoDB storage error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to store user profile',
+      error: error.message
+    });
+  }
+});
+
+// Add alias endpoints for backward compatibility
+router.post('/users/store-profile', async (req, res) => {
+  try {
+    // Forward to the main endpoint
+    const userData = req.body;
+    console.log('Forwarding profile storage request to main endpoint');
+    
+    // Find the user and update
+    const email = userData.email.toLowerCase().trim();
+    let user = await User.findOne({ email });
+    
+    if (user) {
+      user = await User.findOneAndUpdate(
+        { email },
+        { 
+          $set: {
+            ...userData,
+            lastSyncTime: new Date()
+          }
+        },
+        { new: true }
+      );
+    } else {
+      user = await User.create({
+        ...userData,
+        email,
+        lastSyncTime: new Date()
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      profile: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        // Include other fields
+        lastSyncTime: user.lastSyncTime
+      }
+    });
+  } catch (error) {
+    console.error('Profile storage error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to store user profile',
+      error: error.message
+    });
+  }
+});
+
+// Another alias for the profile storage
+router.post('/profile/cloud-store', async (req, res) => {
+  try {
+    const userData = req.body;
+    
+    if (!userData || !userData.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user data provided'
+      });
+    }
+    
+    // Find and update user
+    const email = userData.email.toLowerCase().trim();
+    let user = await User.findOne({ email });
+    
+    if (user) {
+      user = await User.findOneAndUpdate(
+        { email },
+        { 
+          $set: {
+            ...userData,
+            lastSyncTime: new Date()
+          }
+        },
+        { new: true }
+      );
+    } else {
+      user = await User.create({
+        ...userData,
+        email,
+        lastSyncTime: new Date()
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: 'Profile stored successfully',
+      profile: user
+    });
+  } catch (error) {
+    console.error('Cloud profile storage error:', error);
+    res.status(500).json({
+      success: false, 
+      message: error.message
+    });
+  }
+});
+
 // Protected update endpoint: only the authenticated user can update their own data
 router.put('/', protect, async (req, res) => {
   try {
@@ -194,6 +383,11 @@ function mergeUserData(clientData, serverData, clientSyncDate, serverSyncDate) {
      (!mergedData.profileImage || clientData.profileImage !== serverData.profileImage)) {
     console.log('Using client profileImage (server image was different or missing)');
     mergedData.profileImage = clientData.profileImage;
+  } 
+  // Ensure we don't lose the server profile image if client doesn't have one
+  else if (serverData.profileImage && !clientData.profileImage) {
+    console.log('Preserving server profileImage (client had no image)');
+    mergedData.profileImage = serverData.profileImage;
   }
   
   // Special handling for medical info - merge fields rather than overwrite
@@ -1002,6 +1196,68 @@ router.get('/patient/:patientEmail', protect, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to get patient data',
+      error: error.message
+    });
+  }
+});
+
+// MongoDB-specific GET endpoint for mobile clients
+router.get('/get-mongodb/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+    
+    // Normalize email for case-insensitive lookup
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`MongoDB profile request for user: ${normalizedEmail}`);
+    
+    // Find the user
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Return full profile data
+    res.status(200).json({
+      success: true,
+      profile: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phone: user.phone || '',
+        address: user.address || '',
+        age: user.age || '',
+        medicalInfo: user.medicalInfo || {
+          conditions: '',
+          medications: '',
+          allergies: '',
+          bloodType: ''
+        },
+        homeLocation: user.homeLocation,
+        reminders: user.reminders || [],
+        memories: user.memories || [],
+        emergencyContacts: user.emergencyContacts || [],
+        caregiverEmail: user.caregiverEmail,
+        lastSyncTime: user.lastSyncTime,
+        lastUpdatedAt: user.updatedAt || new Date()
+      }
+    });
+  } catch (error) {
+    console.error('MongoDB profile retrieval error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve user profile',
       error: error.message
     });
   }
