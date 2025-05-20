@@ -49,6 +49,200 @@ router.put('/', protect, async (req, res) => {
 
 // SYNC ENDPOINTS - SERVER-BASED STORAGE
 
+// New unified sync endpoint that handles all user data with conflict resolution
+router.post('/sync', protect, async (req, res) => {
+  try {
+    const { clientData, lastSyncTime } = req.body;
+    const userEmail = req.user.email.toLowerCase();
+    
+    console.log(`Processing sync request for ${userEmail}, last sync: ${lastSyncTime}`);
+    
+    // Security check - only allow users to sync their own data
+    if (userEmail !== clientData.email.toLowerCase()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to sync this data'
+      });
+    }
+
+    // Fetch current server data
+    const serverUser = await User.findOne({ email: userEmail });
+    
+    if (!serverUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found on server'
+      });
+    }
+    
+    // Convert server data to a standard format
+    const serverData = {
+      id: serverUser._id,
+      name: serverUser.name,
+      email: serverUser.email,
+      profileImage: serverUser.profileImage,
+      phone: serverUser.phone || '',
+      address: serverUser.address || '',
+      age: serverUser.age || '',
+      medicalInfo: serverUser.medicalInfo || {
+        conditions: '',
+        medications: '',
+        allergies: '',
+        bloodType: ''
+      },
+      homeLocation: serverUser.homeLocation,
+      reminders: serverUser.reminders || [],
+      memories: serverUser.memories || [],
+      emergencyContacts: serverUser.emergencyContacts || [],
+      caregiverEmail: serverUser.caregiverEmail || null,
+      lastSyncTime: serverUser.lastSyncTime || new Date()
+    };
+    
+    // Check sync timestamps to detect conflicts
+    const clientSyncDate = new Date(lastSyncTime);
+    const serverSyncDate = new Date(serverUser.lastSyncTime);
+    
+    // Merge data with conflict resolution
+    const mergedData = mergeUserData(clientData, serverData, clientSyncDate, serverSyncDate);
+    
+    // Update the server with merged data
+    const updatedUser = await User.findOneAndUpdate(
+      { email: userEmail },
+      { 
+        ...mergedData,
+        lastSyncTime: new Date() // Update sync timestamp
+      },
+      { new: true, runValidators: true }
+    );
+    
+    console.log(`Sync completed for ${userEmail}`);
+    
+    // Return the merged data to ensure client and server are in sync
+    res.json({
+      success: true,
+      user: {
+        id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        profileImage: updatedUser.profileImage,
+        phone: updatedUser.phone || '',
+        address: updatedUser.address || '',
+        age: updatedUser.age || '',
+        medicalInfo: updatedUser.medicalInfo || {
+          conditions: '',
+          medications: '',
+          allergies: '',
+          bloodType: ''
+        },
+        homeLocation: updatedUser.homeLocation,
+        reminders: updatedUser.reminders || [],
+        memories: updatedUser.memories || [],
+        emergencyContacts: updatedUser.emergencyContacts || [],
+        caregiverEmail: updatedUser.caregiverEmail || null,
+        lastSyncTime: updatedUser.lastSyncTime
+      },
+      conflicts: mergedData.conflicts || []
+    });
+  } catch (error) {
+    console.error('Sync error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync user data',
+      error: error.message
+    });
+  }
+});
+
+// Helper function for data merging with conflict resolution
+function mergeUserData(clientData, serverData, clientSyncDate, serverSyncDate) {
+  // Start with the base user data from most recent source
+  let mergedData;
+  const conflicts = [];
+  
+  // Determine which source is newer for basic profile data
+  if (clientSyncDate > serverSyncDate) {
+    console.log('Client data is newer, using as base');
+    mergedData = { ...clientData };
+  } else {
+    console.log('Server data is newer, using as base');
+    mergedData = { ...serverData };
+  }
+  
+  // Special handling for arrays that need merging (reminders, memories, contacts)
+  
+  // 1. Merge reminders
+  mergedData.reminders = mergeArrayItems(
+    clientData.reminders || [], 
+    serverData.reminders || [],
+    'id',
+    (item) => conflicts.push({
+      type: 'reminder',
+      item,
+      resolution: 'kept both versions'
+    })
+  );
+  
+  // 2. Merge memories
+  mergedData.memories = mergeArrayItems(
+    clientData.memories || [], 
+    serverData.memories || [],
+    'id',
+    (item) => conflicts.push({
+      type: 'memory',
+      item,
+      resolution: 'kept both versions'
+    })
+  );
+  
+  // 3. Merge emergency contacts
+  mergedData.emergencyContacts = mergeArrayItems(
+    clientData.emergencyContacts || [], 
+    serverData.emergencyContacts || [],
+    'id',
+    (item) => conflicts.push({
+      type: 'contact',
+      item,
+      resolution: 'kept both versions'
+    })
+  );
+  
+  // Handle profile image separately - prefer client image if available
+  if (clientData.profileImage && (!serverData.profileImage || clientData.profileImage !== serverData.profileImage)) {
+    mergedData.profileImage = clientData.profileImage;
+  }
+  
+  mergedData.conflicts = conflicts;
+  return mergedData;
+}
+
+// Helper function to merge array items with conflict detection
+function mergeArrayItems(clientItems, serverItems, idField, conflictCallback) {
+  const mergedItems = [...serverItems];
+  const serverItemIds = new Set(serverItems.map(item => item[idField]));
+  
+  // Add items from client that don't exist on server
+  clientItems.forEach(clientItem => {
+    if (!serverItemIds.has(clientItem[idField])) {
+      mergedItems.push(clientItem);
+    } else {
+      // Item exists in both - find and compare
+      const serverItem = serverItems.find(item => item[idField] === clientItem[idField]);
+      
+      // If items are different, handle conflict
+      if (JSON.stringify(clientItem) !== JSON.stringify(serverItem)) {
+        // For now, keep both versions and report conflict
+        mergedItems.push({
+          ...clientItem,
+          [idField]: `${clientItem[idField]}_conflict_${Date.now()}`
+        });
+        conflictCallback(clientItem);
+      }
+    }
+  });
+  
+  return mergedItems;
+}
+
 // New comprehensive endpoint for full user data retrieval by email
 router.get('/profile/byEmail/:email', protect, async (req, res) => {
   try {
