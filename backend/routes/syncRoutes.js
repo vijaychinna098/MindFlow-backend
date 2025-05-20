@@ -20,61 +20,15 @@ router.get('/', (req, res) => {
   });
 });
 
-// Endpoint to notify of profile changes
-router.post('/notify', async (req, res) => {
-  try {
-    const { email, deviceId, timestamp } = req.body;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-    
-    console.log(`Sync notification for user: ${email} from device: ${deviceId || 'unknown'}`);
-    
-    // Update user's last sync time
-    if (email) {
-      try {
-        await User.findOneAndUpdate(
-          { email: email.toLowerCase().trim() },
-          { 
-            $set: {
-              lastSyncTime: new Date(),
-              lastSyncDevice: deviceId || 'unknown'
-            }
-          }
-        );
-      } catch (dbError) {
-        console.log(`Error updating user sync time: ${dbError.message}`);
-      }
-    }
-    
-    // In a real implementation, this could trigger push notifications
-    // For now, just acknowledge the notification
-    res.status(200).json({
-      success: true,
-      message: 'Sync notification received',
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Sync notification error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to process sync notification',
-      error: error.message
-    });
-  }
-});
-
-// Check for updates endpoint
+// Endpoint for checking if a user has updates
 router.get('/check/:email', async (req, res) => {
   try {
     const { email } = req.params;
     const lastCheck = req.headers['x-last-check'] || '1970-01-01T00:00:00.000Z';
     const deviceId = req.headers['x-device-id'] || 'unknown';
     
+    console.log(`Sync check for ${email} from device ${deviceId}, last check: ${lastCheck}`);
+    
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -82,10 +36,8 @@ router.get('/check/:email', async (req, res) => {
       });
     }
     
-    console.log(`Update check for user: ${email} from device: ${deviceId}, last check: ${lastCheck}`);
-    
-    // Get the user from the database
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
     
     if (!user) {
       return res.status(404).json({
@@ -94,20 +46,17 @@ router.get('/check/:email', async (req, res) => {
       });
     }
     
-    // Check if there are updates since last check
+    // Check if the user has been updated since the last check
     const lastCheckDate = new Date(lastCheck);
-    const lastUpdateDate = user.updatedAt || user.lastSyncTime || new Date();
+    const userUpdatedAt = user.lastSyncTime || user.updatedAt || new Date(0);
     
-    const hasUpdates = lastUpdateDate > lastCheckDate && 
-                       (!user.lastSyncDevice || user.lastSyncDevice !== deviceId);
-    
-    if (hasUpdates) {
-      console.log(`Updates found for user: ${email}, sending profile data`);
+    // If the user has updates, or if this is from a different device
+    if (userUpdatedAt > lastCheckDate || (user.lastUpdatedBy && user.lastUpdatedBy !== deviceId)) {
+      console.log(`Updates found for ${normalizedEmail}, sending profile`);
       
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         hasUpdates: true,
-        lastUpdate: lastUpdateDate,
         profile: {
           id: user._id,
           name: user.name,
@@ -116,31 +65,20 @@ router.get('/check/:email', async (req, res) => {
           phone: user.phone || '',
           address: user.address || '',
           age: user.age || '',
-          medicalInfo: user.medicalInfo || {
-            conditions: '',
-            medications: '',
-            allergies: '',
-            bloodType: ''
-          },
-          homeLocation: user.homeLocation,
-          reminders: user.reminders || [],
-          memories: user.memories || [],
-          emergencyContacts: user.emergencyContacts || [],
-          caregiverEmail: user.caregiverEmail,
-          lastSyncTime: user.lastSyncTime
+          medicalInfo: user.medicalInfo || {},
+          lastSyncTime: new Date().toISOString()
         }
       });
-    } else {
-      console.log(`No updates found for user: ${email}`);
-      
-      res.status(200).json({
-        success: true,
-        hasUpdates: false,
-        lastCheck: new Date().toISOString()
-      });
     }
+    
+    console.log(`No updates found for ${normalizedEmail}`);
+    
+    return res.status(200).json({
+      success: true,
+      hasUpdates: false
+    });
   } catch (error) {
-    console.error('Update check error:', error);
+    console.error('Sync check error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to check for updates',
@@ -149,8 +87,185 @@ router.get('/check/:email', async (req, res) => {
   }
 });
 
-// Trigger sync endpoint
-router.get('/trigger-sync/:email', async (req, res) => {
+// Endpoint for synchronizing user profiles across devices
+router.post('/profile', async (req, res) => {
+  try {
+    const userData = req.body;
+    
+    if (!userData || !userData.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid user data provided'
+      });
+    }
+    
+    const normalizedEmail = userData.email.toLowerCase().trim();
+    console.log(`Profile sync request for user: ${normalizedEmail}`);
+    
+    // Find existing user
+    let user = await User.findOne({ email: normalizedEmail });
+    
+    if (user) {
+      // Handle special fields carefully
+      
+      // For profile image - never lose an existing image
+      if (!userData.profileImage && user.profileImage) {
+        console.log('Preserving existing profile image during sync');
+        userData.profileImage = user.profileImage;
+      }
+      
+      // For name changes - check timestamps
+      if (userData.name && userData.name !== user.name) {
+        // Check if this update is newer than the existing data
+        const updateTimestamp = userData.updatedAt || userData.lastUpdatedAt || new Date();
+        const userTimestamp = user.updatedAt || user.lastUpdatedAt || user.lastSyncTime || new Date(0);
+        
+        if (new Date(updateTimestamp) > new Date(userTimestamp)) {
+          console.log(`Accepting newer name change: "${user.name}" -> "${userData.name}"`);
+        } else {
+          console.log(`Rejecting older name change, keeping: "${user.name}"`);
+          userData.name = user.name;
+        }
+      }
+      
+      // Update user with merged data
+      user = await User.findOneAndUpdate(
+        { email: normalizedEmail },
+        { 
+          $set: {
+            ...userData,
+            lastSyncTime: new Date()
+          }
+        },
+        { new: true }
+      );
+      
+      console.log(`User profile synchronized for: ${normalizedEmail}`);
+    } else {
+      // Create new user if not found
+      user = await User.create({
+        ...userData,
+        email: normalizedEmail,
+        lastSyncTime: new Date()
+      });
+      
+      console.log(`New user created during sync: ${normalizedEmail}`);
+    }
+    
+    res.status(200).json({
+      success: true,
+      profile: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phone: user.phone || '',
+        address: user.address || '',
+        age: user.age || '',
+        medicalInfo: user.medicalInfo || {},
+        lastSyncTime: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Profile sync error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to synchronize profile',
+      error: error.message
+    });
+  }
+});
+
+// Endpoint for synchronizing just profile images
+router.post('/image', async (req, res) => {
+  try {
+    const { email, profileImage } = req.body;
+    
+    if (!email || !profileImage) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and profile image are required'
+      });
+    }
+    
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`Image sync request for: ${normalizedEmail}`);
+    
+    // Find user and update only the profile image
+    const user = await User.findOneAndUpdate(
+      { email: normalizedEmail },
+      { 
+        $set: { 
+          profileImage: profileImage,
+          lastSyncTime: new Date()
+        } 
+      },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    console.log(`Profile image synced for: ${normalizedEmail}`);
+    
+    res.status(200).json({
+      success: true,
+      profileImage: user.profileImage,
+      name: user.name,
+      lastSyncTime: user.lastSyncTime
+    });
+  } catch (error) {
+    console.error('Image sync error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync image',
+      error: error.message
+    });
+  }
+});
+
+// Notification endpoint for real-time updates
+router.post('/notify', async (req, res) => {
+  try {
+    const { email, deviceId } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+    
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`Notification for user: ${normalizedEmail} from device: ${deviceId || 'unknown'}`);
+    
+    // In a real implementation, you would notify other devices
+    // For now, just update the user's lastSyncTime
+    await User.findOneAndUpdate(
+      { email: normalizedEmail },
+      { $set: { lastSyncTime: new Date() } }
+    );
+    
+    res.status(200).json({
+      success: true,
+      message: 'Notification received'
+    });
+  } catch (error) {
+    console.error('Notification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process notification',
+      error: error.message
+    });
+  }
+});
+
+// Force immediate sync for all connected devices
+router.get('/trigger/:email', async (req, res) => {
   try {
     const { email } = req.params;
     
@@ -161,17 +276,22 @@ router.get('/trigger-sync/:email', async (req, res) => {
       });
     }
     
-    console.log(`Sync trigger for user: ${email}`);
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`Triggering sync for all devices of user: ${normalizedEmail}`);
     
-    // In a real implementation, this would trigger push notifications
-    // For now, just acknowledge the trigger
+    // Update lastSyncTime to trigger update checks
+    await User.findOneAndUpdate(
+      { email: normalizedEmail },
+      { $set: { lastSyncTime: new Date() } }
+    );
+    
     res.status(200).json({
       success: true,
       message: 'Sync triggered',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Sync trigger error:', error);
+    console.error('Trigger sync error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to trigger sync',

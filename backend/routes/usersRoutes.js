@@ -53,7 +53,16 @@ router.post('/update', async (req, res) => {
         console.log('Client missing name, preserving existing name');
         userData.name = user.name;
       } else if (userData.name && userData.name !== user.name) {
-        console.log(`Name change detected: "${user.name}" -> "${userData.name}"`);
+        // Check if this has an updatedAt timestamp within the last hour
+        const isRecentUpdate = userData.updatedAt && 
+          new Date(userData.updatedAt) > new Date(Date.now() - 60 * 60 * 1000); // 1 hour
+        
+        if (isRecentUpdate) {
+          console.log(`Name change detected and accepted: "${user.name}" -> "${userData.name}"`);
+        } else {
+          console.log(`Name change detected but using existing: "${userData.name}" -> "${user.name}"`);
+          userData.name = user.name; 
+        }
       }
       
       // Update with merged fields
@@ -139,6 +148,17 @@ router.post('/store-profile', async (req, res) => {
       if (!userData.name && user.name) {
         userData.name = user.name;
         console.log('Preserved existing user name');
+      } else if (userData.name && userData.name !== user.name) {
+        // Check if this has an updatedAt timestamp within the last hour  
+        const isRecentUpdate = userData.updatedAt && 
+          new Date(userData.updatedAt) > new Date(Date.now() - 60 * 60 * 1000); // 1 hour
+        
+        if (isRecentUpdate) {
+          console.log(`Name change detected and accepted in store-profile: "${user.name}" -> "${userData.name}"`);
+        } else {
+          console.log(`Name change detected in store-profile but using existing: "${userData.name}" -> "${user.name}"`);
+          userData.name = user.name;
+        }
       }
       
       user = await User.findOneAndUpdate(

@@ -148,7 +148,19 @@ app.post("/api/user/store-mongodb", async (req, res) => {
         console.log('Client missing name, preserving existing name');
         userData.name = user.name;
       } else if (userData.name && userData.name !== user.name) {
-        console.log(`Name change detected: "${user.name}" -> "${userData.name}"`);
+        // Check if this is a recent update (has timestamp within last hour)
+        const isRecentUpdate = userData.lastUpdatedAt || userData.updatedAt;
+        const updateTimestamp = isRecentUpdate ? 
+          new Date(userData.lastUpdatedAt || userData.updatedAt) : null;
+        const isRecent = updateTimestamp && 
+          updateTimestamp > new Date(Date.now() - 60 * 60 * 1000); // 1 hour
+          
+        if (isRecent) {
+          console.log(`MongoDB: Name change detected and accepted: "${user.name}" -> "${userData.name}"`);
+        } else {
+          console.log(`MongoDB: Name change detected but timestamp missing or old, preserving: "${user.name}"`);
+          userData.name = user.name;
+        }
       }
       
       // Update with merged fields
@@ -267,9 +279,54 @@ app.get("/api/user/get-mongodb/:email", async (req, res) => {
   }
 });
 
-// Health check endpoint
+// Health check and status endpoints
 app.get("/", (req, res) => {
   res.send("Server is running");
+});
+
+app.get("/status", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    version: process.env.npm_package_version || '1.0.0'
+  });
+});
+
+app.get("/healthcheck", async (req, res) => {
+  try {
+    // Check MongoDB connection
+    const mongoStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
+    
+    // Test user count to validate database connectivity
+    const userCount = await User.countDocuments({});
+    
+    res.status(200).json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      services: {
+        web: "ok",
+        database: mongoStatus,
+        auth: "ok",
+      },
+      stats: {
+        users: userCount,
+        uptime: Math.floor(process.uptime()),
+      }
+    });
+  } catch (error) {
+    console.error("Healthcheck error:", error);
+    res.status(500).json({
+      success: false,
+      timestamp: new Date().toISOString(),
+      error: error.message,
+      services: {
+        web: "ok",
+        database: "error",
+        auth: "unknown"
+      }
+    });
+  }
 });
 
 // Start Server
