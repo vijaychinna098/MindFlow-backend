@@ -159,14 +159,50 @@ function mergeUserData(clientData, serverData, clientSyncDate, serverSyncDate) {
   let mergedData;
   const conflicts = [];
   
-  // Determine which source is newer for basic profile data
+  // For most profile fields, use the most recent data source based on sync time
   if (clientSyncDate > serverSyncDate) {
     console.log('Client data is newer, using as base');
     mergedData = { ...clientData };
+    
+    // Add important fields from server data that might be missing or older
+    // but should be preserved (like IDs, creation dates, etc.)
+    mergedData.id = clientData.id || serverData.id;
+    
   } else {
     console.log('Server data is newer, using as base');
     mergedData = { ...serverData };
   }
+  
+  // Special handling: Always prioritize non-empty values for critical fields regardless of timestamp
+  // This ensures that once set, important fields don't get erased during sync
+  
+  // For user name: Use the non-empty value, prefer client if both exist and differ
+  if (clientData.name && (!mergedData.name || clientData.name !== serverData.name)) {
+    console.log(`Using client name: "${clientData.name}" (server had: "${serverData.name || 'none'}")`);
+    mergedData.name = clientData.name;
+  }
+  
+  // For home location: Use the non-empty value, prefer client if both exist and differ
+  if (clientData.homeLocation && (!mergedData.homeLocation || 
+      JSON.stringify(clientData.homeLocation) !== JSON.stringify(serverData.homeLocation))) {
+    console.log('Using client homeLocation (server location was different or missing)');
+    mergedData.homeLocation = clientData.homeLocation;
+  }
+  
+  // For profile image: Always keep a valid profile image, prefer client if available
+  if (clientData.profileImage && 
+     (!mergedData.profileImage || clientData.profileImage !== serverData.profileImage)) {
+    console.log('Using client profileImage (server image was different or missing)');
+    mergedData.profileImage = clientData.profileImage;
+  }
+  
+  // Special handling for medical info - merge fields rather than overwrite
+  mergedData.medicalInfo = {
+    conditions: clientData.medicalInfo?.conditions || serverData.medicalInfo?.conditions || '',
+    medications: clientData.medicalInfo?.medications || serverData.medicalInfo?.medications || '',
+    allergies: clientData.medicalInfo?.allergies || serverData.medicalInfo?.allergies || '',
+    bloodType: clientData.medicalInfo?.bloodType || serverData.medicalInfo?.bloodType || ''
+  };
   
   // Special handling for arrays that need merging (reminders, memories, contacts)
   
@@ -205,11 +241,6 @@ function mergeUserData(clientData, serverData, clientSyncDate, serverSyncDate) {
       resolution: 'kept both versions'
     })
   );
-  
-  // Handle profile image separately - prefer client image if available
-  if (clientData.profileImage && (!serverData.profileImage || clientData.profileImage !== serverData.profileImage)) {
-    mergedData.profileImage = clientData.profileImage;
-  }
   
   mergedData.conflicts = conflicts;
   return mergedData;
