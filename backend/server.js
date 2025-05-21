@@ -111,177 +111,13 @@ app.use("/api/sync", syncRoutes);                          // Sync routes
 
 // DIRECT ACCOUNT DELETION ENDPOINT - REMOVED (now in authRoutes.js)
 
-// Ping endpoint for testing connectivity
-app.get("/ping", (req, res) => {
-  res.status(200).json({ message: "Server is reachable", timestamp: new Date().toISOString() });
-});
-
-// API endpoint for MongoDB profile storage
-app.post("/api/user/store-mongodb", async (req, res) => {
-  try {
-    const userData = req.body;
-    
-    if (!userData || !userData.email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid user data provided'
-      });
-    }
-    
-    const email = userData.email.toLowerCase().trim();
-    console.log(`MongoDB storage request for user: ${email}`);
-    
-    // Check if user exists
-    let user = await User.findOne({ email });
-    
-    if (user) {
-      console.log(`Updating existing user: ${email}`);
-      
-      // Special handling for profile image to prevent data loss
-      if (!userData.profileImage && user.profileImage) {
-        console.log('Client missing profile image, preserving existing image');
-        userData.profileImage = user.profileImage;
-      }
-      
-      // Special handling for name to prevent inconsistencies
-      if (!userData.name && user.name) {
-        console.log('Client missing name, preserving existing name');
-        userData.name = user.name;
-      } else if (userData.name && userData.name !== user.name) {
-        // Check if this is a recent update (has timestamp within last hour)
-        const isRecentUpdate = userData.lastUpdatedAt || userData.updatedAt;
-        const updateTimestamp = isRecentUpdate ? 
-          new Date(userData.lastUpdatedAt || userData.updatedAt) : null;
-        const isRecent = updateTimestamp && 
-          updateTimestamp > new Date(Date.now() - 60 * 60 * 1000); // 1 hour
-          
-        if (isRecent) {
-          console.log(`MongoDB: Name change detected and accepted: "${user.name}" -> "${userData.name}"`);
-        } else {
-          console.log(`MongoDB: Name change detected but timestamp missing or old, preserving: "${user.name}"`);
-          userData.name = user.name;
-        }
-      }
-      
-      // Update with merged fields
-      user = await User.findOneAndUpdate(
-        { email },
-        { 
-          $set: {
-            ...userData,
-            lastSyncTime: new Date()
-          }
-        },
-        { new: true }
-      );
-    } else {
-      console.log(`Creating new user: ${email}`);
-      user = await User.create({
-        ...userData,
-        email,
-        lastSyncTime: new Date()
-      });
-    }
-    
-    res.status(200).json({
-      success: true,
-      profile: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        profileImage: user.profileImage,
-        phone: user.phone || '',
-        address: user.address || '',
-        age: user.age || '',
-        medicalInfo: user.medicalInfo || {
-          conditions: '',
-          medications: '',
-          allergies: '',
-          bloodType: ''
-        },
-        homeLocation: user.homeLocation,
-        reminders: user.reminders || [],
-        memories: user.memories || [],
-        emergencyContacts: user.emergencyContacts || [],
-        caregiverEmail: user.caregiverEmail,
-        lastSyncTime: user.lastSyncTime
-      }
-    });
-  } catch (error) {
-    console.error('MongoDB storage error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to store user profile',
-      error: error.message
-    });
-  }
-});
-
-// API endpoint for getting MongoDB profiles by email
-app.get("/api/user/get-mongodb/:email", async (req, res) => {
-  try {
-    const { email } = req.params;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-    
-    // Normalize email for case-insensitive lookup
-    const normalizedEmail = email.toLowerCase().trim();
-    console.log(`MongoDB profile request for user: ${normalizedEmail}`);
-    
-    // Find the user
-    const user = await User.findOne({ email: normalizedEmail });
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    // Return full profile data
-    res.status(200).json({
-      success: true,
-      profile: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        profileImage: user.profileImage,
-        phone: user.phone || '',
-        address: user.address || '',
-        age: user.age || '',
-        medicalInfo: user.medicalInfo || {
-          conditions: '',
-          medications: '',
-          allergies: '',
-          bloodType: ''
-        },
-        homeLocation: user.homeLocation,
-        reminders: user.reminders || [],
-        memories: user.memories || [],
-        emergencyContacts: user.emergencyContacts || [],
-        caregiverEmail: user.caregiverEmail,
-        lastSyncTime: user.lastSyncTime,
-        lastUpdatedAt: user.updatedAt || new Date()
-      }
-    });
-  } catch (error) {
-    console.error('MongoDB profile retrieval error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to retrieve user profile',
-      error: error.message
-    });
-  }
-});
-
 // Health check and status endpoints
 app.get("/", (req, res) => {
-  res.send("Server is running");
+  res.status(200).json({ 
+    status: "ok", 
+    message: "Server is running",
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.get("/status", (req, res) => {
@@ -293,13 +129,26 @@ app.get("/status", (req, res) => {
   });
 });
 
+app.get("/ping", (req, res) => {
+  res.status(200).json({ 
+    status: "ok", 
+    message: "pong",
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get("/api/ping", (req, res) => {
+  res.status(200).json({ 
+    status: "ok", 
+    message: "API is online",
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get("/healthcheck", async (req, res) => {
   try {
     // Check MongoDB connection
     const mongoStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
-    
-    // Test user count to validate database connectivity
-    const userCount = await User.countDocuments({});
     
     res.status(200).json({
       success: true,
@@ -307,26 +156,89 @@ app.get("/healthcheck", async (req, res) => {
       services: {
         web: "ok",
         database: mongoStatus,
-        auth: "ok",
-      },
-      stats: {
-        users: userCount,
-        uptime: Math.floor(process.uptime()),
+        uptime: Math.floor(process.uptime())
       }
     });
   } catch (error) {
-    console.error("Healthcheck error:", error);
+    console.error("Health check error:", error);
     res.status(500).json({
       success: false,
-      timestamp: new Date().toISOString(),
-      error: error.message,
-      services: {
-        web: "ok",
-        database: "error",
-        auth: "unknown"
-      }
+      error: "Error performing health check"
     });
   }
+});
+
+// Register all route handlers
+app.use('/api/users', usersRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/sync', syncRoutes);
+
+// Backward compatibility routes
+app.use('/api/user', usersRoutes);  // Map /api/user to usersRoutes as well
+app.use('/users', usersRoutes);     // Map /users to usersRoutes too
+
+// Catch-all route for user profile requests
+app.get("/api/user/profile/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    console.log(`Catch-all profile request for: ${normalizedEmail}`);
+    
+    // Find the user
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phone: user.phone,
+        address: user.address,
+        age: user.age,
+        medicalInfo: user.medicalInfo || {},
+        lastSyncTime: user.lastSyncTime || new Date()
+      }
+    });
+  } catch (error) {
+    console.error('Error in catch-all profile route:', error);
+    res.status(500).json({
+      success: false, 
+      message: 'Server error', 
+      error: error.message
+    });
+  }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Server error',
+    path: req.path
+  });
+});
+
+// Handle 404 errors
+app.use((req, res) => {
+  console.log(`404 Not Found: ${req.method} ${req.path}`);
+  res.status(404).json({ 
+    success: false, 
+    message: 'API endpoint not found',
+    path: req.path,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Start Server

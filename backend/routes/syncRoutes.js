@@ -300,4 +300,120 @@ router.get('/trigger/:email', async (req, res) => {
   }
 });
 
+// Additional endpoint for aggressive profile image synchronization
+router.post('/aggressive-image', async (req, res) => {
+  try {
+    const { email, profileImage } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+    
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`AGGRESSIVE IMAGE SYNC: Request for ${normalizedEmail}`);
+    
+    // Find the user
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Handle both upload and download
+    if (profileImage) {
+      console.log(`AGGRESSIVE IMAGE SYNC: Updating server image for ${normalizedEmail}`);
+      
+      // Update the user's profile image
+      await User.findOneAndUpdate(
+        { email: normalizedEmail },
+        { 
+          $set: { 
+            profileImage: profileImage,
+            lastSyncTime: new Date()
+          } 
+        }
+      );
+      
+      res.status(200).json({
+        success: true,
+        message: 'Profile image updated successfully',
+        profileImage: profileImage
+      });
+    } else if (user.profileImage) {
+      console.log(`AGGRESSIVE IMAGE SYNC: Sending server image to client for ${normalizedEmail}`);
+      
+      // Return the existing profile image
+      res.status(200).json({
+        success: true,
+        profileImage: user.profileImage,
+        name: user.name
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: 'No profile image available'
+      });
+    }
+  } catch (error) {
+    console.error('Aggressive image sync error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync image',
+      error: error.message
+    });
+  }
+});
+
+// One-way image download (no image upload required)
+router.get('/image/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+    
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`Image download request for: ${normalizedEmail}`);
+    
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    if (!user.profileImage) {
+      return res.status(404).json({
+        success: false,
+        message: 'No profile image found for this user'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      profileImage: user.profileImage,
+      name: user.name
+    });
+  } catch (error) {
+    console.error('Image download error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get profile image',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router; 

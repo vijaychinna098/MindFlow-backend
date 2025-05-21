@@ -209,7 +209,7 @@ router.get('/cloud-get/:email', async (req, res) => {
   }
 });
 
-// Get just the profile image by email
+// Get just the profile image by email - add support for multiple URL patterns
 router.get('/image/:email', async (req, res) => {
   try {
     const { email } = req.params;
@@ -223,6 +223,52 @@ router.get('/image/:email', async (req, res) => {
     
     const normalizedEmail = email.toLowerCase().trim();
     console.log(`Getting profile image for: ${normalizedEmail}`);
+    
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    if (!user.profileImage) {
+      return res.status(404).json({
+        success: false,
+        message: 'No profile image found for this user'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      profileImage: user.profileImage,
+      name: user.name
+    });
+  } catch (error) {
+    console.error('Profile image retrieval error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get profile image',
+      error: error.message
+    });
+  }
+});
+
+// Alternative URL patterns for image retrieval for better compatibility
+router.get('/:email/image', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+    
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`Getting profile image (alt URL) for: ${normalizedEmail}`);
     
     const user = await User.findOne({ email: normalizedEmail });
     
