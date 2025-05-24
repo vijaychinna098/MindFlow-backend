@@ -97,69 +97,6 @@ router.post('/cloud-store', async (req, res) => {
   }
 });
 
-// Specific endpoint for profile image synchronization
-router.post('/image', async (req, res) => {
-  try {
-    const { email, profileImage } = req.body;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-    
-    const normalizedEmail = email.toLowerCase().trim();
-    console.log(`Profile image sync request for: ${normalizedEmail}`);
-    
-    if (!profileImage) {
-      return res.status(400).json({
-        success: false,
-        message: 'Profile image is required'
-      });
-    }
-    
-    // Find the user and update just the profile image
-    const user = await User.findOneAndUpdate(
-      { email: normalizedEmail },
-      { 
-        $set: {
-          profileImage: profileImage,
-          lastSyncTime: new Date()
-        }
-      },
-      { new: true }
-    );
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    console.log(`Profile image updated for: ${normalizedEmail}`);
-    
-    res.status(200).json({
-      success: true,
-      profile: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        profileImage: user.profileImage,
-        lastSyncTime: user.lastSyncTime
-      }
-    });
-  } catch (error) {
-    console.error('Profile image sync error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to sync profile image',
-      error: error.message
-    });
-  }
-});
-
 // Get user profile by email
 router.get('/cloud-get/:email', async (req, res) => {
   try {
@@ -209,98 +146,6 @@ router.get('/cloud-get/:email', async (req, res) => {
   }
 });
 
-// Get just the profile image by email - add support for multiple URL patterns
-router.get('/image/:email', async (req, res) => {
-  try {
-    const { email } = req.params;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-    
-    const normalizedEmail = email.toLowerCase().trim();
-    console.log(`Getting profile image for: ${normalizedEmail}`);
-    
-    const user = await User.findOne({ email: normalizedEmail });
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    if (!user.profileImage) {
-      return res.status(404).json({
-        success: false,
-        message: 'No profile image found for this user'
-      });
-    }
-    
-    res.status(200).json({
-      success: true,
-      profileImage: user.profileImage,
-      name: user.name
-    });
-  } catch (error) {
-    console.error('Profile image retrieval error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get profile image',
-      error: error.message
-    });
-  }
-});
-
-// Alternative URL patterns for image retrieval for better compatibility
-router.get('/:email/image', async (req, res) => {
-  try {
-    const { email } = req.params;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-    
-    const normalizedEmail = email.toLowerCase().trim();
-    console.log(`Getting profile image (alt URL) for: ${normalizedEmail}`);
-    
-    const user = await User.findOne({ email: normalizedEmail });
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    if (!user.profileImage) {
-      return res.status(404).json({
-        success: false,
-        message: 'No profile image found for this user'
-      });
-    }
-    
-    res.status(200).json({
-      success: true,
-      profileImage: user.profileImage,
-      name: user.name
-    });
-  } catch (error) {
-    console.error('Profile image retrieval error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get profile image',
-      error: error.message
-    });
-  }
-});
-
 // Endpoint to notify of profile changes
 router.post('/notify', async (req, res) => {
   try {
@@ -330,4 +175,4 @@ router.post('/notify', async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;
