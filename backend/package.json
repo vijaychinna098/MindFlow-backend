@@ -1,10 +1,10 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node --max-old-space-size=4096 server.js",
-    "dev": "nodemon --max-old-space-size=4096 server.js"
+    "start": "node --max-old-space-size=4096 index.js",
+    "dev": "nodemon --max-old-space-size=4096 index.js"
   },
   "engines": {
     "node": ">=14.0.0"

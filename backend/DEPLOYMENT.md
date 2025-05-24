@@ -2,29 +2,48 @@
 
 This guide explains how to deploy the MindFlow backend to Render.com.
 
-## Deployment Steps
+## Deployment Steps for Render.com
 
-1. Push your code to GitHub (ensure the backend folder contains all necessary files)
-2. Log in to your Render dashboard
-3. Create a new Web Service
-4. Connect your GitHub repository
-5. Configure the following settings:
+1. **Create a New Web Service**
+   - Log in to your Render.com dashboard
+   - Click "New +" and select "Web Service"
 
-   - **Name**: mindflow-backend
+2. **Connect Your Repository**
+   - Select the GitHub repository that contains your MindFlow backend code
+   - Make sure you're selecting the repository that contains the `backend` folder
+
+3. **Configure the Service**
+   - **Name**: mindflow-backend (or your preferred name)
+   - **Root Directory**: backend
    - **Environment**: Node.js
    - **Build Command**: `npm install`
-   - **Start Command**: `npm start` or `node server.js`
-   - **Root Directory**: `backend` (important!)
+   - **Start Command**: `npm start`
 
-6. Add any required environment variables in the Environment section:
+4. **Add Environment Variables**
    - `MONGODB_URI` - Your MongoDB connection string
    - `JWT_SECRET` - Secret for JWT tokens
    - `EMAIL_USER` - Email user for notifications
    - `EMAIL_PASSWORD` - Email password
    - `BASE_URL` - Your deployed service URL (important for profile images)
+   - `NODE_ENV` - Set to "production"
 
-7. Set up the following paths to be persisted (important for profile images):
-   - `/uploads`
+5. **Deploy**
+   - Click "Create Web Service"
+   - Render will build and deploy your application
+
+## Troubleshooting
+
+If you encounter the "Cannot find module '/opt/render/project/src/server.js'" error:
+   
+1. **Make sure you've set the Root Directory correctly**
+   - It should be set to "backend" to tell Render to look in that folder
+
+2. **Check your package.json**
+   - The "main" field should be set to "index.js"
+   - The "start" script should be "node index.js" or "node --max-old-space-size=4096 index.js"
+
+3. **Verify your index.js file**
+   - The backend folder should contain an index.js file that requires the server.js file
 
 ## Enhanced Profile Synchronization
 
