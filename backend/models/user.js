@@ -78,6 +78,26 @@ const userSchema = new mongoose.Schema({
   caregiverEmail: {
     type: String,
     default: null
+  },
+  lastUpdatedBy: {
+    type: String,
+    default: null
+  },
+  lastSyncDeviceId: {
+    type: String,
+    default: null
+  },
+  lastNameUpdate: {
+    type: Date,
+    default: null
+  },
+  lastProfileImageUpdate: {
+    type: Date,
+    default: null
+  },
+  forceSyncFlag: {
+    type: Boolean,
+    default: false
   }
 });
 

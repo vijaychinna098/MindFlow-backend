@@ -1,219 +1,250 @@
-// Final integrated server.js configuration with all fixed endpoints
-// This ensures all endpoints are properly registered and synchronized
+// Enhanced Synchronization Service for MindFlow
+// This module provides functions for handling profile data synchronization
 
-// This file should be merged into server.js after code review
+const User = require('./models/user');
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
 
-// Ensure all API endpoints are accessible
-app.use("/api/users/sync", (req, res, next) => {
-  console.log("API sync endpoint accessed");
-  
-  // Forward to the sync endpoint in user.js
-  const userRouter = require("./routes/user");
-  
-  // Call the sync function directly
-  if (req.method === "POST") {
-    userRouter.syncHandler(req, res, next);
-  } else {
-    res.status(405).json({
-      success: false,
-      message: "Method not allowed - use POST for sync"
-    });
+// Ensure the uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads/profile-images');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('Created uploads directory for profile images');
+}
+
+// Function to handle profile data synchronization
+const syncUserProfile = async (email, deviceId, profileData) => {
+  if (!email) {
+    console.error('Email is required for profile sync');
+    return { success: false, message: 'Email is required' };
   }
-});
 
-// Create direct sync endpoint for aggressive device-to-device sync
-app.post("/api/sync/direct-device", async (req, res) => {
   try {
-    const { userData, deviceId, timestamp, lastSyncTime } = req.body;
-    
-    if (!userData || !userData.email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid sync data provided'
-      });
-    }
-    
-    const email = userData.email.toLowerCase().trim();
-    console.log(`Direct device sync request for user: ${email} from device: ${deviceId}`);
-    
-    // Find existing user in database
-    const User = require('./models/user');
-    let user = await User.findOne({ email });
-    
-    if (user) {
-      console.log(`Existing user found for direct sync: ${email}`);
-      
-      // Handle profile image to ensure consistency
-      if (!userData.profileImage && user.profileImage) {
-        console.log('Client missing profile image, will return server image');
-        userData.profileImage = user.profileImage;
-      } else if (userData.profileImage && !user.profileImage) {
-        console.log('Server missing profile image, using client image');
-      }
-      
-      // Special handling for name fields
-      if (!userData.name && user.name) {
-        console.log('Client missing name, will return server name');
-        userData.name = user.name;
-      } else if (userData.name && !user.name) {
-        console.log('Server missing name, using client name');
-      }
-      
-      // Update with merged fields
-      user = await User.findOneAndUpdate(
-        { email },
-        { 
-          $set: {
-            ...userData,
-            lastSyncTime: new Date(),
-            lastSyncDevice: deviceId
-          }
-        },
-        { new: true }
-      );
-      
-      return res.status(200).json({
-        success: true,
-        message: 'Direct sync successful',
-        userData: user
-      });
-    } else {
-      console.log(`User not found for direct sync: ${email}, creating new user`);
-      
-      // Create new user from client data
-      user = await User.create({
-        ...userData,
-        email,
-        lastSyncTime: new Date(),
-        lastSyncDevice: deviceId
-      });
-      
-      return res.status(200).json({
-        success: true,
-        message: 'User created via direct sync',
-        userData: user
-      });
-    }
-  } catch (error) {
-    console.error('Error in direct device sync:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error in direct device sync',
-      error: error.message
-    });
-  }
-});
-
-// Add the aggressive image sync endpoint
-app.post("/api/sync/aggressive-image", async (req, res) => {
-  try {
-    const { email, profileImage } = req.body;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-    
     const normalizedEmail = email.toLowerCase().trim();
-    console.log(`Aggressive image sync for user: ${normalizedEmail}`);
+    console.log(`Processing profile sync for ${normalizedEmail} from device ${deviceId}`);
     
-    // Find user in database
-    const User = require('./models/user');
+    // Find the user
     let user = await User.findOne({ email: normalizedEmail });
     
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      console.error(`User not found for email: ${normalizedEmail}`);
+      return { success: false, message: 'User not found' };
     }
     
-    let updatedImage = user.profileImage;
+    // Handle conflict resolution for profile data
+    let changes = {
+      nameChanged: false,
+      profileImageChanged: false
+    };
     
-    // Update user's profile image if provided
-    if (profileImage && profileImage !== user.profileImage) {
-      console.log(`Updating profile image for: ${normalizedEmail}`);
+    if (profileData) {
+      // Name update logic - use timestamp to determine which is newer
+      if (profileData.name && (!user.lastNameUpdate || 
+          (profileData.lastNameUpdate && new Date(profileData.lastNameUpdate) > new Date(user.lastNameUpdate)))) {
+        console.log(`Updating name from "${user.name}" to "${profileData.name}"`);
+        user.name = profileData.name;
+        user.lastNameUpdate = profileData.lastNameUpdate || new Date();
+        changes.nameChanged = true;
+      }
       
-      user = await User.findOneAndUpdate(
-        { email: normalizedEmail },
-        { 
-          $set: {
-            profileImage: profileImage,
-            lastSyncTime: new Date()
-          }
-        },
-        { new: true }
-      );
-      
-      updatedImage = profileImage;
-    } else if (!profileImage && user.profileImage) {
-      // Client wants image but doesn't have one
-      console.log(`Client requested image for: ${normalizedEmail}`);
-      updatedImage = user.profileImage;
+      // Profile image update logic - use timestamp to determine which is newer
+      if (profileData.profileImage && (!user.lastProfileImageUpdate || 
+          (profileData.lastProfileImageUpdate && new Date(profileData.lastProfileImageUpdate) > new Date(user.lastProfileImageUpdate)))) {
+        console.log(`Updating profile image`);
+        user.profileImage = profileData.profileImage;
+        user.lastProfileImageUpdate = profileData.lastProfileImageUpdate || new Date();
+        changes.profileImageChanged = true;
+      }
     }
     
-    return res.status(200).json({
+    // Update sync metadata
+    user.lastSyncTime = new Date();
+    user.lastSyncDeviceId = deviceId;
+    
+    // Save the updated user
+    await user.save();
+    
+    return {
       success: true,
-      message: 'Aggressive image sync successful',
-      profileImage: updatedImage,
-      name: user.name // Also return name for consistency
-    });
+      changes,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        lastNameUpdate: user.lastNameUpdate,
+        lastProfileImageUpdate: user.lastProfileImageUpdate
+      }
+    };
   } catch (error) {
-    console.error('Error in aggressive image sync:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error in aggressive image sync',
-      error: error.message
-    });
+    console.error('Error in syncUserProfile:', error);
+    return { success: false, message: error.message || 'Unknown error during profile sync' };
   }
-});
+};
 
-// One-way image download endpoint
-app.get("/api/sync/image/:email", async (req, res) => {
+// Function to handle profile image uploads
+const processProfileImage = async (imageFile, email, deviceId) => {
+  if (!imageFile || !email) {
+    return { success: false, message: 'Image file and email are required' };
+  }
+  
   try {
-    const { email } = req.params;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-    
     const normalizedEmail = email.toLowerCase().trim();
-    console.log(`Image download request for user: ${normalizedEmail}`);
     
-    // Find user in database
-    const User = require('./models/user');
+    // Find the user
     const user = await User.findOne({ email: normalizedEmail });
     
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
+      return { success: false, message: 'User not found' };
     }
     
-    if (!user.profileImage) {
-      return res.status(404).json({
-        success: false,
-        message: 'User has no profile image'
-      });
-    }
+    // Create the image URL based on file path
+    const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+    const imageUrl = `${baseUrl}/uploads/profile-images/${imageFile.filename}`;
     
-    return res.status(200).json({
+    // Update the user's profile image
+    user.profileImage = imageUrl;
+    user.lastProfileImageUpdate = new Date();
+    user.lastUpdatedBy = deviceId;
+    
+    await user.save();
+    
+    return {
       success: true,
-      profileImage: user.profileImage,
-      name: user.name
-    });
+      imageUrl,
+      message: 'Profile image updated successfully'
+    };
   } catch (error) {
-    console.error('Error in image download:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Error in image download',
-      error: error.message
-    });
+    console.error('Error processing profile image:', error);
+    return { success: false, message: error.message || 'Error processing profile image' };
   }
-});
+};
+
+// Function to notify other devices about profile updates
+const notifyProfileUpdate = async (email, deviceId) => {
+  if (!email) {
+    return { success: false, message: 'Email is required' };
+  }
+  
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Find the user
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return { success: false, message: 'User not found' };
+    }
+    
+    // Update sync metadata to trigger sync on other devices
+    user.lastSyncTime = new Date();
+    user.lastUpdatedBy = deviceId || 'server';
+    user.forceSyncFlag = true;
+    
+    await user.save();
+    
+    // Here you would typically implement push notifications to other devices
+    // using Firebase Cloud Messaging or similar service
+    
+    return {
+      success: true,
+      message: 'Profile update notification sent'
+    };
+  } catch (error) {
+    console.error('Error in notifyProfileUpdate:', error);
+    return { success: false, message: error.message || 'Error notifying profile update' };
+  }
+};
+
+// Function to force synchronization across all devices
+const forceProfileSync = async (email) => {
+  if (!email) {
+    return { success: false, message: 'Email is required' };
+  }
+  
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Find the user
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return { success: false, message: 'User not found' };
+    }
+    
+    // Update sync metadata to force sync on all devices
+    user.lastSyncTime = new Date();
+    user.forceSyncFlag = true;
+    
+    await user.save();
+    
+    return {
+      success: true,
+      message: 'Force sync triggered',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage
+      }
+    };
+  } catch (error) {
+    console.error('Error in forceProfileSync:', error);
+    return { success: false, message: error.message || 'Error forcing profile sync' };
+  }
+};
+
+// Function to check if a user needs to sync
+const checkUserNeedsSync = async (email, deviceId, lastSyncTime) => {
+  if (!email) {
+    return { needsSync: false, message: 'Email is required' };
+  }
+  
+  try {
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // Find the user
+    const user = await User.findOne({ email: normalizedEmail });
+    
+    if (!user) {
+      return { needsSync: false, message: 'User not found' };
+    }
+    
+    // Convert lastSyncTime to Date object if it's a string
+    const clientLastSync = lastSyncTime ? new Date(lastSyncTime) : new Date(0);
+    
+    // Check if server has newer data
+    const serverLastSync = user.lastSyncTime || user.updatedAt || new Date(0);
+    
+    // Conditions for needing sync:
+    // 1. Server has newer data
+    // 2. The data was last updated by a different device
+    // 3. Force sync flag is set
+    const needsSync = serverLastSync > clientLastSync || 
+                     (user.lastUpdatedBy && user.lastUpdatedBy !== deviceId) ||
+                     user.forceSyncFlag === true;
+    
+    return {
+      needsSync,
+      reason: needsSync 
+        ? (serverLastSync > clientLastSync 
+            ? 'Server has newer data' 
+            : (user.forceSyncFlag 
+                ? 'Force sync requested' 
+                : 'Updated by another device'))
+        : 'No sync needed'
+    };
+  } catch (error) {
+    console.error('Error in checkUserNeedsSync:', error);
+    return { needsSync: false, message: error.message || 'Error checking sync status' };
+  }
+};
+
+module.exports = {
+  syncUserProfile,
+  processProfileImage,
+  notifyProfileUpdate,
+  forceProfileSync,
+  checkUserNeedsSync
+};

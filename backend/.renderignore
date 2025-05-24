@@ -1,0 +1,7 @@
+# Ignore files not needed for production
+node_modules
+.env.local
+.DS_Store
+*.log
+tmp/
+temp/

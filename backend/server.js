@@ -25,6 +25,7 @@ console.log("============================");
 // Initialize Firebase
 require('./firebaseConfig'); // Initialize Firebase
 
+// Initialize Express
 const app = express();
 
 // Security headers for production
@@ -38,14 +39,28 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Enhanced CORS configuration
+// Middleware
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
-
 app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Create uploads directory if it doesn't exist
+const fs = require('fs');
+const path = require('path');
+const uploadsDir = path.join(__dirname, 'uploads/profile-images');
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('Created uploads directory for profile images');
+}
+
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect to MongoDB
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://MindFlow:donthaveaim@cluster0.jwxwiys.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
@@ -108,6 +123,16 @@ app.use("/api/users", usersRoutes);                        // Users routes for p
 app.use("/api/profile", profileRoutes);                    // Profile routes for cloud storage
 app.use("/api/user", require("./routes/user"));            // ✅ User routes for getting user info and activities
 app.use("/api/sync", syncRoutes);                          // Sync routes
+
+// Enhanced Sync Routes for improved profile consistency
+const enhancedSyncRoutes = require('./routes/enhancedSyncRoutes');
+app.use("/api/enhanced-sync", enhancedSyncRoutes);
+
+// Direct sync endpoint for backward compatibility
+app.use("/api/users/sync", (req, res, next) => {
+  console.log("Legacy sync endpoint accessed");
+  require('./routes/user').syncHandler(req, res, next);
+});
 
 // Add alternative endpoints to support existing client calls
 app.use("/users", usersRoutes);                           // Mirror of /api/users for compatibility
