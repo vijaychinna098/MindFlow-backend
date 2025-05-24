@@ -75,10 +75,6 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  caregiverEmail: {
-    type: String,
-    default: null
-  },
   lastUpdatedBy: {
     type: String,
     default: null
@@ -94,6 +90,14 @@ const userSchema = new mongoose.Schema({
   lastProfileImageUpdate: {
     type: Date,
     default: null
+  },
+  syncVersion: {
+    type: Number,
+    default: 0
+  },
+  dataVersion: {
+    type: Number,
+    default: 1
   },
   forceSyncFlag: {
     type: Boolean,
