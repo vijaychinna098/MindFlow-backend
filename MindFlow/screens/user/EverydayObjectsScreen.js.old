@@ -1,0 +1,1686 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Image, 
+  ScrollView,
+  Alert,
+  Animated
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import * as Speech from 'expo-speech';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { stopSpeech, speakWithVoiceCheck, setupNavigationSpeechControl } from '../../utils/SpeechManager';
+import ActivityTracker from '../../utils/ActivityTracker';
+import { useLanguage } from "../../LanguageContext";
+
+// This game helps Alzheimer's patients recognize and remember everyday objects
+// Each object is shown with its name, then later they must recall which objects they've seen
+
+// Translations for object names in different languages
+const objectTranslations = {
+  // English - defaults are already in object names
+  en: {},
+  
+  // Hindi
+  hi: {
+    cup: 'कप',
+    spoon: 'चम्मच',
+    fork: 'कांटा',
+    plate: 'प्लेट',
+    kettle: 'केतली',
+    refrigerator: 'रेफ्रिजरेटर',
+    toothbrush: 'टूथब्रश',
+    soap: 'साबुन',
+    towel: 'तौलिया',
+    comb: 'कंघी',
+    toilet: 'शौचालय',
+    television: 'टेलीविजन',
+    sofa: 'सोफा',
+    lamp: 'लैंप',
+    remote_control: 'रिमोट कंट्रोल',
+    clock: 'घड़ी',
+    bed: 'बिस्तर',
+    pillow: 'तकिया',
+    blanket: 'कंबल',
+    alarm_clock: 'अलार्म घड़ी',
+    dresser: 'ड्रेसर',
+    shirt: 'कमीज',
+    pants: 'पैंट',
+    shoes: 'जूते',
+    socks: 'मोज़े',
+    hat: 'टोपी'
+  },
+  
+  // Hindi
+  hi: {
+    cup: 'कप',
+    spoon: 'चम्मच',
+    fork: 'कांटा',
+    plate: 'प्लेट',
+    kettle: 'केतली',
+    refrigerator: 'रेफ्रिजरेटर',
+    toothbrush: 'टूथब्रश',
+    soap: 'साबुन',
+    towel: 'तौलिया',
+    comb: 'कंघी',
+    toilet: 'शौचालय',
+    television: 'टेलीविजन',
+    sofa: 'सोफा',
+    lamp: 'लैंप',
+    remote_control: 'रिमोट कंट्रोल',
+    clock: 'घड़ी',
+    bed: 'बिस्तर',
+    pillow: 'तकिया',
+    blanket: 'कंबल',
+    alarm_clock: 'अलार्म घड़ी',
+    dresser: 'ड्रेसर',
+    shirt: 'कमीज',
+    pants: 'पैंट',
+    shoes: 'जूते',
+    socks: 'मोज़े',
+    hat: 'टोपी'
+  },
+  
+  // Spanish - using objects with capital first letter to match translations.js format
+  es: {
+    cup: 'Taza',
+    spoon: 'Cuchara',
+    fork: 'Tenedor',
+    plate: 'Plato',
+    kettle: 'Tetera',
+    refrigerator: 'Refrigerador',
+    toothbrush: 'Cepillo de dientes',
+    soap: 'Jabón',
+    towel: 'Toalla',
+    comb: 'Peine',
+    toilet: 'Inodoro',
+    television: 'Televisión',
+    sofa: 'Sofá',
+    lamp: 'Lámpara',
+    remote_control: 'Control remoto',
+    clock: 'Reloj',
+    bed: 'Cama',
+    pillow: 'Almohada',
+    blanket: 'Manta',
+    alarm_clock: 'Despertador',
+    dresser: 'Cómoda',
+    shirt: 'Camisa',
+    pants: 'Pantalones',
+    shoes: 'Zapatos',
+    socks: 'Calcetines',
+    hat: 'Sombrero'
+  },
+  
+  // French - using objects with capital first letter to match translations.js format
+  fr: {
+    cup: 'Tasse',
+    spoon: 'Cuillère',
+    fork: 'Fourchette',
+    plate: 'Assiette',
+    kettle: 'Bouilloire',
+    refrigerator: 'Réfrigérateur',
+    toothbrush: 'Brosse à dents',
+    soap: 'Savon',
+    towel: 'Serviette',
+    comb: 'Peigne',
+    toilet: 'Toilette',
+    television: 'Télévision',
+    sofa: 'Canapé',
+    lamp: 'Lampe',
+    remote_control: 'Télécommande',
+    clock: 'Horloge',
+    bed: 'Lit',
+    pillow: 'Oreiller',
+    blanket: 'Couverture',
+    alarm_clock: 'Réveil',
+    dresser: 'Commode',
+    shirt: 'Chemise',
+    pants: 'Pantalon',
+    shoes: 'Chaussures',
+    socks: 'Chaussettes',
+    hat: 'Chapeau'
+  },
+  
+  // Telugu
+  te: {
+    cup: 'కప్పు',
+    spoon: 'చెంచా',
+    fork: 'ముల్లు చెంచా',
+    plate: 'ప్లేటు',
+    kettle: 'కెటిల్',
+    refrigerator: 'రెఫ్రిజిరేటర్',
+    toothbrush: 'టూత్ బ్రష్',
+    soap: 'సబ్బు',
+    towel: 'తువ్వాలు',
+    comb: 'దువ్వెన',
+    toilet: 'మరుగుదొడ్డి',
+    television: 'టెలివిజన్',
+    sofa: 'సోఫా',
+    lamp: 'దీపం',
+    remote_control: 'రిమోట్ కంట్రోల్',
+    clock: 'గడియారం',
+    bed: 'మంచం',
+    pillow: 'తలగడ',
+    blanket: 'దుప్పటి',
+    alarm_clock: 'అలారం గడియారం',
+    dresser: 'డ్రెస్సర్',
+    shirt: 'చొక్కా',
+    pants: 'ప్యాంట్',
+    shoes: 'బూట్లు',
+    socks: 'సాక్స్',
+    hat: 'టోపీ'
+  }
+};
+
+// Translations for object descriptions in different languages
+const descriptionTranslations = {
+  // English - defaults are already in object descriptions
+  en: {},
+  
+  // Hindi
+  hi: {
+    cup_description: 'पेय पदार्थ पीने के लिए उपयोग किया जाता है',
+    spoon_description: 'सूप खाने या मिश्रण करने के लिए उपयोग किया जाता है',
+    fork_description: 'ठोस खाद्य पदार्थ खाने के लिए उपयोग किया जाता है',
+    plate_description: 'भोजन परोसने के लिए उपयोग किया जाता है',
+    kettle_description: 'पानी उबालने के लिए उपयोग किया जाता है',
+    refrigerator_description: 'खाद्य पदार्थों को ठंडा रखने के लिए उपयोग किया जाता है',
+    toothbrush_description: 'दांतों को साफ करने के लिए उपयोग किया जाता है',
+    soap_description: 'साफ करने के लिए उपयोग किया जाता है',
+    towel_description: 'सूखने के लिए उपयोग किया जाता है',
+    comb_description: 'बालों को संवारने के लिए उपयोग किया जाता है',
+    toilet_description: 'शौच के लिए उपयोग किया जाता है',
+    television_description: 'कार्यक्रम देखने के लिए उपयोग किया जाता है',
+    sofa_description: 'आराम से बैठने के लिए उपयोग किया जाता है',
+    lamp_description: 'प्रकाश देने के लिए उपयोग किया जाता है',
+    remote_description: 'इलेक्ट्रॉनिक उपकरणों को नियंत्रित करने के लिए उपयोग किया जाता है',
+    clock_description: 'समय दिखाने के लिए उपयोग किया जाता है',
+    bed_description: 'सोने के लिए उपयोग किया जाता है',
+    pillow_description: 'सिर को सहारा देने के लिए उपयोग किया जाता है',
+    blanket_description: 'गर्म रखने के लिए उपयोग किया जाता है',
+    alarm_clock_description: 'एक निश्चित समय पर जगाने के लिए उपयोग किया जाता है',
+    dresser_description: 'कपड़े रखने के लिए उपयोग किया जाता है',
+    shirt_description: 'ऊपरी शरीर के लिए पहनने वाला वस्त्र',
+    pants_description: 'निचले शरीर के लिए पहनने वाला वस्त्र',
+    shoes_description: 'पैरों की सुरक्षा के लिए पहने जाते हैं',
+    socks_description: 'पैरों पर पहने जाते हैं',
+    hat_description: 'सिर पर पहना जाता है'
+  },
+  
+  // Spanish
+  es: {
+    cup_description: 'Se utiliza para beber líquidos',
+    spoon_description: 'Se utiliza para comer sopa o remover',
+    fork_description: 'Se utiliza para comer alimentos sólidos',
+    plate_description: 'Se utiliza para servir comida',
+    kettle_description: 'Se utiliza para hervir agua',
+    refrigerator_description: 'Se utiliza para mantener los alimentos fríos',
+    toothbrush_description: 'Se utiliza para limpiar los dientes',
+    soap_description: 'Se utiliza para limpiar',
+    towel_description: 'Se utiliza para secarse',
+    comb_description: 'Se utiliza para peinar el cabello',
+    toilet_description: 'Se utiliza para las necesidades fisiológicas',
+    television_description: 'Se utiliza para ver programas',
+    sofa_description: 'Se utiliza para sentarse cómodamente',
+    lamp_description: 'Se utiliza para dar luz',
+    remote_description: 'Se utiliza para controlar dispositivos electrónicos',
+    clock_description: 'Se utiliza para mostrar la hora',
+    bed_description: 'Se utiliza para dormir',
+    pillow_description: 'Se utiliza para apoyar la cabeza',
+    blanket_description: 'Se utiliza para mantenerse caliente',
+    alarm_clock_description: 'Se utiliza para despertar a una hora determinada',
+    dresser_description: 'Se utiliza para guardar ropa',
+    shirt_description: 'Prenda para vestir la parte superior del cuerpo',
+    pants_description: 'Prenda para vestir la parte inferior del cuerpo',
+    shoes_description: 'Se usan para proteger los pies',
+    socks_description: 'Se llevan en los pies',
+    hat_description: 'Se lleva en la cabeza'
+  },
+  
+  // French
+  fr: {
+    cup_description: 'Utilisé pour boire des boissons',
+    spoon_description: 'Utilisé pour manger de la soupe ou remuer',
+    fork_description: 'Utilisé pour manger des aliments solides',
+    plate_description: 'Utilisé pour servir de la nourriture',
+    kettle_description: 'Utilisé pour faire bouillir de l\'eau',
+    refrigerator_description: 'Utilisé pour garder les aliments au frais',
+    toothbrush_description: 'Utilisé pour nettoyer les dents',
+    soap_description: 'Utilisé pour nettoyer',
+    towel_description: 'Utilisé pour se sécher',
+    comb_description: 'Utilisé pour coiffer les cheveux',
+    toilet_description: 'Utilisé pour les besoins naturels',
+    television_description: 'Utilisé pour regarder des programmes',
+    sofa_description: 'Utilisé pour s\'asseoir confortablement',
+    lamp_description: 'Utilisé pour donner de la lumière',
+    remote_description: 'Utilisé pour contrôler des appareils électroniques',
+    clock_description: 'Utilisé pour afficher l\'heure',
+    bed_description: 'Utilisé pour dormir',
+    pillow_description: 'Utilisé pour soutenir la tête',
+    blanket_description: 'Utilisé pour se tenir chaud',
+    alarm_clock_description: 'Utilisé pour réveiller à une heure précise',
+    dresser_description: 'Utilisé pour ranger des vêtements',
+    shirt_description: 'Vêtement pour le haut du corps',
+    pants_description: 'Vêtement pour le bas du corps',
+    shoes_description: 'Portés pour protéger les pieds',
+    socks_description: 'Portés sur les pieds',
+    hat_description: 'Porté sur la tête'
+  },
+  
+  // Telugu
+  te: {
+    cup_description: 'పానీయాలు తాగడానికి ఉపయోగించబడుతుంది',
+    spoon_description: 'సూప్ తినడానికి లేదా కలపడానికి ఉపయోగించబడుతుంది',
+    fork_description: 'ఘన ఆహారాలను తినడానికి ఉపయోగించబడుతుంది',
+    plate_description: 'ఆహారాన్ని వడ్డించడానికి ఉపయోగించబడుతుంది',
+    kettle_description: 'నీటిని మరగబెట్టడానికి ఉపయోగించబడుతుంది',
+    refrigerator_description: 'ఆహారాన్ని చల్లగా ఉంచడానికి ఉపయోగించబడుతుంది',
+    toothbrush_description: 'పళ్లను శుభ్రం చేయడానికి ఉపయోగించబడుతుంది',
+    soap_description: 'శుభ్రపరచడానికి ఉపయోగించబడుతుంది',
+    towel_description: 'ఆరబెట్టుకోవడానికి ఉపయోగించబడుతుంది',
+    comb_description: 'జుట్టును దువ్వడానికి ఉపయోగించబడుతుంది',
+    toilet_description: 'మలవిసర్జన కోసం ఉపయోగించబడుతుంది',
+    television_description: 'ప్రోగ్రామ్‌లను చూడటానికి ఉపయోగించబడుతుంది',
+    sofa_description: 'హాయిగా కూర్చోవడానికి ఉపయోగించబడుతుంది',
+    lamp_description: 'కాంతిని ఇవ్వడానికి ఉపయోగించబడుతుంది',
+    remote_description: 'ఎలక్ట్రానిక్ పరికరాలను నియంత్రించడానికి ఉపయోగించబడుతుంది',
+    clock_description: 'సమయాన్ని చూపించడానికి ఉపయోగించబడుతుంది',
+    bed_description: 'నిద్రపోవడానికి ఉపయోగించబడుతుంది',
+    pillow_description: 'తలను ఆదుకోవడానికి ఉపయోగించబడుతుంది',
+    blanket_description: 'వెచ్చగా ఉంచడానికి ఉపయోగించబడుతుంది',
+    alarm_clock_description: 'నిర్దిష్ట సమయంలో మేల్కొలపడానికి ఉపయోగించబడుతుంది',
+    dresser_description: 'దుస్తులను నిల్వ చేయడానికి ఉపయోగించబడుతుంది',
+    shirt_description: 'శరీరం పై భాగాన్ని ధరించే దుస్తులు',
+    pants_description: 'శరీరం క్రింది భాగాన్ని ధరించే దుస్తులు',
+    shoes_description: 'పాదాలను రక్షించడానికి ధరించబడతాయి',
+    socks_description: 'పాదాలపై ధరించబడతాయి',
+    hat_description: 'తలపై ధరించబడుతుంది'
+  }
+};
+
+// Everyday objects data with categories to make it more relatable to daily life
+const everydayObjects = {
+  kitchen: [
+    { id: 'k1', name: 'cup', description: 'cup_description', icon: 'cafe-outline' },
+    { id: 'k2', name: 'spoon', description: 'spoon_description', icon: 'restaurant-outline' },
+    { id: 'k3', name: 'fork', description: 'fork_description', icon: 'restaurant-outline' },
+    { id: 'k4', name: 'plate', description: 'plate_description', icon: 'restaurant-outline' },
+    { id: 'k5', name: 'kettle', description: 'kettle_description', icon: 'water-outline' },
+    { id: 'k6', name: 'refrigerator', description: 'refrigerator_description', icon: 'snow-outline' },
+  ],
+  bathroom: [
+    { id: 'b1', name: 'toothbrush', description: 'toothbrush_description', icon: 'brush-outline' },
+    { id: 'b2', name: 'soap', description: 'soap_description', icon: 'water-outline' },
+    { id: 'b3', name: 'towel', description: 'towel_description', icon: 'layers-outline' },
+    { id: 'b4', name: 'comb', description: 'comb_description', icon: 'brush-outline' },
+    { id: 'b5', name: 'toilet', description: 'toilet_description', icon: 'water-outline' },
+  ],
+  livingRoom: [
+    { id: 'l1', name: 'television', description: 'television_description', icon: 'tv-outline' },
+    { id: 'l2', name: 'sofa', description: 'sofa_description', icon: 'bed-outline' },
+    { id: 'l3', name: 'lamp', description: 'lamp_description', icon: 'bulb-outline' },
+    { id: 'l4', name: 'remote_control', description: 'remote_description', icon: 'hardware-chip-outline' },
+    { id: 'l5', name: 'clock', description: 'clock_description', icon: 'time-outline' },
+  ],
+  bedroom: [
+    { id: 'bd1', name: 'bed', description: 'bed_description', icon: 'bed-outline' },
+    { id: 'bd2', name: 'pillow', description: 'pillow_description', icon: 'square-outline' },
+    { id: 'bd3', name: 'blanket', description: 'blanket_description', icon: 'layers-outline' },
+    { id: 'bd4', name: 'alarm_clock', description: 'alarm_clock_description', icon: 'alarm-outline' },
+    { id: 'bd5', name: 'dresser', description: 'dresser_description', icon: 'file-tray-stacked-outline' },
+  ],
+  clothing: [
+    { id: 'c1', name: 'shirt', description: 'shirt_description', icon: 'shirt-outline' },
+    { id: 'c2', name: 'pants', description: 'pants_description', icon: 'cut-outline' },
+    { id: 'c3', name: 'shoes', description: 'shoes_description', icon: 'footsteps-outline' },
+    { id: 'c4', name: 'socks', description: 'socks_description', icon: 'happy-outline' },
+    { id: 'c5', name: 'hat', description: 'hat_description', icon: 'umbrella-outline' },
+  ]
+};
+
+// Difficulty levels
+const DIFFICULTY = {
+  EASY: { 
+    name: 'Easy',
+    objectsToShow: 3,
+    showTimeSeconds: 5,
+    distractorObjects: 2
+  },
+  MEDIUM: { 
+    name: 'Medium',
+    objectsToShow: 5,
+    showTimeSeconds: 4,
+    distractorObjects: 5
+  },
+  HARD: { 
+    name: 'Hard',
+    objectsToShow: 7,
+    showTimeSeconds: 3,
+    distractorObjects: 7
+  }
+};
+
+// Add translations for household chores
+const houseChoreTranslations = {
+  hi: {
+    'Make bed': 'बिस्तर बनाएं',
+    'Straighten sheets and blankets': 'चादरें और कंबल सीधे करें',
+    'Dust furniture': 'फर्नीचर से धूल हटाएं',
+    'Clean surfaces with cloth': 'कपड़े से सतहों को साफ करें',
+    'Vacuum floor': 'फर्श पर वैक्यूम करें',
+    'Use vacuum on carpets': 'कालीनों पर वैक्यूम का उपयोग करें',
+    'Clean bathroom': 'बाथरूम साफ करें',
+    'Wipe sink, toilet, shower': 'सिंक, टॉयलेट, शॉवर को पोंछें',
+    'Take out trash': 'कचरा बाहर निकालें',
+    'Empty trash bins': 'कचरे के डिब्बे खाली करें',
+    'Wash clothes': 'कपड़े धोएं',
+    'Use washing machine': 'वाशिंग मशीन का उपयोग करें',
+    'Fold laundry': 'धुले हुए कपड़े तह करें',
+    'Organize clean clothes': 'साफ कपड़े व्यवस्थित करें',
+    'Water plants': 'पौधों को पानी दें',
+    'Give plants fresh water': 'पौधों को ताजा पानी दें'
+  },
+  te: {
+    'Make bed': 'పడక సర్దండి',
+    'Straighten sheets and blankets': 'దుప్పట్లు మరియు బ్లాంకెట్లను సరిచేయండి',
+    'Dust furniture': 'ఫర్నిచర్‌పై దుమ్ము తుడవండి',
+    'Clean surfaces with cloth': 'బట్టతో ఉపరితలాలను శుభ్రం చేయండి',
+    'Vacuum floor': 'నేలను వాక్యూమ్ చేయండి',
+    'Use vacuum on carpets': 'కార్పెట్లపై వాక్యూమ్ ఉపయోగించండి',
+    'Clean bathroom': 'బాత్రూమ్‌ను శుభ్రం చేయండి',
+    'Wipe sink, toilet, shower': 'సింక్, టాయిలెట్, షవర్‌ను తుడవండి',
+    'Take out trash': 'చెత్త బయటకు తీయండి',
+    'Empty trash bins': 'చెత్తబుట్టలను ఖాళీ చేయండి',
+    'Wash clothes': 'బట్టలు ఉతకండి',
+    'Use washing machine': 'వాషింగ్ మెషీన్‌ను ఉపయోగించండి',
+    'Fold laundry': 'ఉతికిన బట్టలు మడవండి',
+    'Organize clean clothes': 'శుభ్రమైన బట్టలను క్రమంలో పెట్టండి',
+    'Water plants': 'మొక్కలకు నీరు పోయండి',
+    'Give plants fresh water': 'మొక్కలకు తాజా నీరు ఇవ్వండి'
+  }
+};
+
+// Now let's modify the speak function to handle household chores:
+
+// Helper function to speak if voice is enabled
+const speak = (message) => {
+  if (isVoiceEnabled) {
+    // First check if it's a household chore from our translations
+    if (houseChoreTranslations[language] && houseChoreTranslations[language][message]) {
+      speakWithVoiceCheck(houseChoreTranslations[language][message], true, true);
+      return;
+    }
+    
+    // Handle specific text translations for different languages
+    const speechTranslations = {
+      hi: {
+        welcomeEverydayObjects: 'रोजमर्रा की वस्तुओं में आपका स्वागत है। यह गेम आपको घर की आम वस्तुओं को पहचानने और याद रखने में मदद करेगा।',
+        rememberObjectsTime: 'इन वस्तुओं को याद रखें। प्रत्येक वस्तु को ध्यान से देखें।',
+        selectSeenObjects: 'अब उन सभी वस्तुओं का चयन करें जिन्हें आपने अभी देखा था। प्रत्येक वस्तु को छुएं जिसे आपने याद रखा है।',
+        excellentMemoryFeedback: 'उत्कृष्ट कार्य! आपने अधिकांश वस्तुओं को सही ढंग से याद रखा।',
+        goodMemoryFeedback: 'अच्छा प्रयास! आपने कुछ वस्तुओं को याद रखा।',
+        practiceMemoryFeedback: 'इसे चुनौतीपूर्ण पाना ठीक है। अपनी याददाश्त में सुधार के लिए फिर से अभ्यास करें।',
+        tryAgainChooseCategory: 'फिर से प्रयास करते हैं। रोजमर्रा की वस्तुओं की एक श्रेणी चुनें।',
+        voiceInstructionsEnabled: 'आवाज निर्देश सक्रिय हैं',
+        opening: 'खोल रहा है',
+        difficulty: 'कठिनाई'
+      },
+      te: {
+        welcomeEverydayObjects: 'రోజువారీ వస్తువులకు స్వాగతం. ఈ ఆట మీకు మీ ఇంటి నుండి సాధారణ వస్తువులను గుర్తించడంలో మరియు గుర్తుంచుకోవడంలో సహాయపడుతుంది.',
+        rememberObjectsTime: 'ఈ వస్తువులను గుర్తుంచుకోండి. ప్రతి వస్తువును జాగ్రత్తగా చూడండి.',
+        selectSeenObjects: 'ఇప్పుడు మీరు ఇంతకు ముందు చూసిన వస్తువులన్నింటినీ ఎంచుకోండి. మీరు గుర్తుంచుకున్న ప్రతి వస్తువును టాప్ చేయండి.',
+        excellentMemoryFeedback: 'అద్భుతమైన పని! మీరు చాలా వస్తువులను సరిగ్గా గుర్తుంచుకున్నారు.',
+        goodMemoryFeedback: 'మంచి ప్రయత్నం! మీరు కొన్ని వస్తువులను గుర్తుంచుకున్నారు.',
+        practiceMemoryFeedback: 'ఇది సవాలుగా ఉండడం సహజం. మీ జ్ఞాపకశక్తిని మెరుగుపరచడానికి మళ్లీ ప్రయత్నించండి.',
+        tryAgainChooseCategory: 'మళ్లీ ప్రయత్నిద్దాం. ఒక రోజువారీ వస్తువుల వర్గాన్ని ఎంచుకోండి.',
+        voiceInstructionsEnabled: 'వాయిస్ సూచనలు ఎనేబుల్ చేయబడ్డాయి',
+        opening: 'తెరుస్తోంది',
+        difficulty: 'కష్టం'
+      },
+      es: {
+        welcomeEverydayObjects: 'Bienvenido a Objetos Cotidianos. Este juego te ayudará a reconocer y recordar objetos comunes de tu hogar.',
+        rememberObjectsTime: 'Recuerda estos objetos. Observa cada objeto con atención.',
+        selectSeenObjects: 'Ahora selecciona todos los objetos que acabas de ver. Toca cada objeto que recuerdes.',
+        excellentMemoryFeedback: '¡Excelente trabajo! Has recordado correctamente la mayoría de los objetos.',
+        goodMemoryFeedback: '¡Buen intento! Has recordado algunos objetos.',
+        practiceMemoryFeedback: 'Está bien encontrarlo desafiante. Practica de nuevo para mejorar tu memoria.',
+        tryAgainChooseCategory: 'Intentemos de nuevo. Elige una categoría de objetos cotidianos.',
+        voiceInstructionsEnabled: 'Instrucciones de voz activadas',
+        opening: 'Abriendo',
+        difficulty: 'Dificultad'
+      },
+      fr: {
+        welcomeEverydayObjects: 'Bienvenue aux Objets du Quotidien. Ce jeu vous aidera à reconnaître et à mémoriser des objets courants de votre maison.',
+        rememberObjectsTime: 'Mémorisez ces objets. Observez attentivement chaque objet.',
+        selectSeenObjects: 'Maintenant, sélectionnez tous les objets que vous venez de voir. Touchez chaque objet dont vous vous souvenez.',
+        excellentMemoryFeedback: 'Excellent travail ! Vous avez correctement mémorisé la plupart des objets.',
+        goodMemoryFeedback: 'Bon essai ! Vous avez mémorisé quelques objets.',
+        practiceMemoryFeedback: 'C\'est normal de trouver cela difficile. Entraînez-vous à nouveau pour améliorer votre mémoire.',
+        tryAgainChooseCategory: 'Essayons à nouveau. Choisissez une catégorie d\'objets du quotidien.',
+        voiceInstructionsEnabled: 'Instructions vocales activées',
+        opening: 'Ouverture',
+        difficulty: 'Difficulté'
+      }
+    };
+    
+    // Check if we have a direct translation for this language and message
+    if (speechTranslations[language] && speechTranslations[language][message]) {
+      speakWithVoiceCheck(speechTranslations[language][message], true, true);
+      return;
+    }
+    
+    // For all other messages, use the translation system
+    const messageText = translate(message);
+    speakWithVoiceCheck(messageText, true, true);
+  }
+};
+
+const EverydayObjectsScreen = () => {
+  const navigation = useNavigation();
+  const [difficulty, setDifficulty] = useState(DIFFICULTY.EASY);
+  const [gamePhase, setGamePhase] = useState('setup'); // setup, learning, testing, results
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [objectsToRemember, setObjectsToRemember] = useState([]);
+  const [allTestObjects, setAllTestObjects] = useState([]);
+  const [selectedObjects, setSelectedObjects] = useState([]);
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
+  const [voiceSettingsLoaded, setVoiceSettingsLoaded] = useState(false);
+  const timerRef = useRef(null);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const { translate, language } = useLanguage();
+  
+  // Toggle voice assistance on/off
+  const toggleVoice = () => {
+    const newVoiceState = !isVoiceEnabled;
+    setIsVoiceEnabled(newVoiceState);
+    
+    // Save the voice setting to AsyncStorage
+    AsyncStorage.setItem('voiceAssistance', newVoiceState.toString())
+      .catch(error => console.error('Error saving voice setting:', error));
+    
+    // Stop any ongoing speech if turning off
+    if (!newVoiceState) {
+      stopSpeech();
+    }
+  };
+  
+  // Check for global voice assistance setting when screen loads
+  useEffect(() => {
+    const loadVoiceSettings = async () => {
+      try {
+        const storedVoiceSetting = await AsyncStorage.getItem('voiceAssistance');
+        if (storedVoiceSetting === 'false') {
+          setIsVoiceEnabled(false);
+        }
+        setVoiceSettingsLoaded(true);
+      } catch (error) {
+        console.error('Error loading voice settings:', error);
+        setVoiceSettingsLoaded(true);
+      }
+    };
+    
+    loadVoiceSettings();
+    
+    // Setup navigation listener to stop speech when leaving this screen
+    const unsubscribe = setupNavigationSpeechControl(navigation);
+    
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      stopSpeech();
+      unsubscribe();
+    };
+  }, [navigation]);
+  
+  // Initial welcome message when screen loads
+  useEffect(() => {
+    if (voiceSettingsLoaded && isVoiceEnabled) {
+      speak("welcomeEverydayObjects");
+    }
+  }, [voiceSettingsLoaded]);
+  
+  // Stop speech when navigating away from the screen
+  useFocusEffect(
+    React.useCallback(() => {
+      // On screen focus, no action needed
+      
+      return () => {
+        // On screen unfocus (navigating away)
+        Speech.stop();
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
+      };
+    }, [])
+  );
+
+  // Render category selection
+  const renderCategorySelection = () => {
+    // Language-specific room translations
+    const roomTranslations = {
+      // Hindi
+      hi: {
+        chooseARoom: 'एक कमरा चुनें',
+        kitchen: 'रसोई',
+        bathroom: 'बाथरूम',
+        livingRoom: 'बैठक कक्ष',
+        bedroom: 'शयनकक्ष',
+        clothing: 'कपड़े'
+      },
+      // Telugu
+      te: {
+        chooseARoom: 'ఒక గది ఎంచుకోండి',
+        kitchen: 'వంటగది',
+        bathroom: 'స్నానాల గది',
+        livingRoom: 'హాల్',
+        bedroom: 'పడక గది',
+        clothing: 'దుస్తులు'
+      },
+      // Spanish
+      es: {
+        chooseARoom: 'Elige una habitación',
+        kitchen: 'Cocina',
+        bathroom: 'Baño',
+        livingRoom: 'Sala de estar',
+        bedroom: 'Dormitorio',
+        clothing: 'Ropa'
+      },
+      // French
+      fr: {
+        chooseARoom: 'Choisissez une pièce',
+        kitchen: 'Cuisine',
+        bathroom: 'Salle de bain',
+        livingRoom: 'Salon',
+        bedroom: 'Chambre',
+        clothing: 'Vêtements'
+      }
+    };
+    
+    // Get room name in selected language or fall back to English
+    const getRoomName = (roomKey) => {
+      if (roomTranslations[language] && roomTranslations[language][roomKey]) {
+        return roomTranslations[language][roomKey];
+      }
+      return translate(roomKey);
+    };
+    
+    return (
+      <View style={styles.selectionContainer}>
+        <Text style={styles.sectionTitle}>
+          {roomTranslations[language]?.chooseARoom || translate("chooseARoom")}
+        </Text>
+        
+        {Object.keys(everydayObjects).map((category) => (
+          <TouchableOpacity
+            key={category}
+            style={[
+              styles.categoryButton,
+              selectedCategory === category && styles.selectedButton
+            ]}
+            onPress={() => selectCategory(category)}
+          >
+            <Text 
+              style={[
+                styles.categoryButtonText,
+                selectedCategory === category && styles.selectedButtonText
+              ]}
+            >
+              {getRoomName(category)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
+  // Select a category of everyday objects
+  const selectCategory = (category) => {
+    // Stop any ongoing speech immediately
+    stopSpeech();
+    
+    setSelectedCategory(category);
+    
+    // Language-specific room translations for speech
+    const roomTranslationsSpeech = {
+      hi: {
+        kitchen: 'रसोई',
+        bathroom: 'बाथरूम',
+        livingRoom: 'बैठक कक्ष',
+        bedroom: 'शयनकक्ष',
+        clothing: 'कपड़े',
+        message: ' श्रेणी चुनी गई'
+      },
+      te: {
+        kitchen: 'వంటగది',
+        bathroom: 'స్నానాల గది',
+        livingRoom: 'హాల్',
+        bedroom: 'పడక గది',
+        clothing: 'దుస్తులు',
+        message: ' వర్గం ఎంచుకోబడింది'
+      },
+      es: {
+        kitchen: 'Cocina',
+        bathroom: 'Baño',
+        livingRoom: 'Sala de estar',
+        bedroom: 'Dormitorio',
+        clothing: 'Ropa',
+        message: ' categoría seleccionada'
+      },
+      fr: {
+        kitchen: 'Cuisine',
+        bathroom: 'Salle de bain',
+        livingRoom: 'Salon',
+        bedroom: 'Chambre',
+        clothing: 'Vêtements',
+        message: ' catégorie sélectionnée'
+      }
+    };
+    
+    // Use language-specific translations for speech
+    if (roomTranslationsSpeech[language]) {
+      const translations = roomTranslationsSpeech[language];
+      const categoryName = translations[category] || category;
+      const message = `${categoryName}${translations.message}`;
+      speakWithVoiceCheck(message, true, true);
+    } else {
+      // For other languages, use the translation system
+      speak(`selectedCategory_${category}`);
+    }
+  };
+
+  // Select difficulty level
+  const selectDifficulty = (level) => {
+    // Stop any ongoing speech immediately
+    stopSpeech();
+    
+    setDifficulty(level);
+    
+    // Language-specific difficulty translations for speech
+    const difficultyTranslations = {
+      hi: {
+        Easy: 'आसान',
+        Medium: 'मध्यम',
+        Hard: 'कठिन',
+        message: ' कठिनाई स्तर चुना गया'
+      },
+      te: {
+        Easy: 'సులభం',
+        Medium: 'మధ్యస్థం',
+        Hard: 'కష్టం',
+        message: ' కష్టం స్థాయి ఎంచుకోబడింది'
+      },
+      es: {
+        Easy: 'Fácil',
+        Medium: 'Medio',
+        Hard: 'Difícil',
+        message: ' nivel de dificultad seleccionado'
+      },
+      fr: {
+        Easy: 'Facile',
+        Medium: 'Moyen',
+        Hard: 'Difficile',
+        message: ' niveau de difficulté sélectionné'
+      }
+    };
+    
+    // Use language-specific translations for speech
+    if (difficultyTranslations[language]) {
+      const translations = difficultyTranslations[language];
+      const difficultyName = translations[level.name] || level.name;
+      const message = `${difficultyName}${translations.message}`;
+      speakWithVoiceCheck(message, true, true);
+    } else {
+      // For other languages, use the translation system
+      speak(`selectedDifficulty_${level.name}`);
+    }
+  };
+
+  // Start the game
+  const startGame = () => {
+    // Stop any ongoing speech immediately
+    stopSpeech();
+    
+    // Track that the Everyday Objects game was started
+    ActivityTracker.trackActivity('Everyday Objects', 'memory_game_opened', {
+      category: selectedCategory,
+      difficulty: difficulty.name
+    });
+    
+    // Select random objects from the chosen category to remember
+    const categoryObjects = everydayObjects[selectedCategory];
+    const shuffled = [...categoryObjects].sort(() => 0.5 - Math.random());
+    const objectsToShow = shuffled.slice(0, difficulty.objectsToShow);
+    
+    setObjectsToRemember(objectsToShow);
+    setGamePhase('learning');
+    setTimeLeft(difficulty.showTimeSeconds);
+    
+    speak("rememberObjectsTime");
+    
+    // Start countdown timer
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          prepareTestingPhase(objectsToShow);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    // Fade animation for transition
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: true
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true
+      })
+    ]).start();
+  };
+
+  // Prepare the testing phase by adding distractor objects
+  const prepareTestingPhase = (objectsToShow) => {
+    // Get objects from other categories as distractors
+    let distractors = [];
+    Object.keys(everydayObjects).forEach(category => {
+      if (category !== selectedCategory) {
+        distractors = [...distractors, ...everydayObjects[category]];
+      }
+    });
+    
+    // Also add unused objects from the same category
+    const unusedCategoryObjects = everydayObjects[selectedCategory].filter(
+      obj => !objectsToShow.find(o => o.id === obj.id)
+    );
+    distractors = [...distractors, ...unusedCategoryObjects];
+    
+    // Shuffle and take required number of distractors
+    distractors = distractors.sort(() => 0.5 - Math.random()).slice(0, difficulty.distractorObjects);
+    
+    // Combine original objects and distractors and shuffle
+    const allObjects = [...objectsToShow, ...distractors].sort(() => 0.5 - Math.random());
+    
+    setAllTestObjects(allObjects);
+    setSelectedObjects([]);
+    setGamePhase('testing');
+    
+    speak("selectSeenObjects");
+  };
+
+  // Handle object selection during testing phase
+  const handleObjectSelection = (object) => {
+    // Stop any ongoing speech immediately
+    stopSpeech();
+    
+    // Check if already selected
+    if (selectedObjects.find(obj => obj.id === object.id)) {
+      // Remove from selected
+      setSelectedObjects(prev => prev.filter(obj => obj.id !== object.id));
+    } else {
+      // Add to selected
+      setSelectedObjects(prev => [...prev, object]);
+    }
+  };
+
+  // Submit selections and check results
+  const checkResults = () => {
+    // Count correct selections
+    const correctSelections = selectedObjects.filter(
+      selected => objectsToRemember.find(obj => obj.id === selected.id)
+    ).length;
+    
+    // Count incorrect selections (false positives)
+    const incorrectSelections = selectedObjects.length - correctSelections;
+    
+    // Count missed objects (false negatives)
+    const missedObjects = objectsToRemember.length - correctSelections;
+    
+    // Calculate score (max 100)
+    const calculatedScore = Math.max(
+      0, 
+      Math.round(
+        (correctSelections / objectsToRemember.length * 100) - 
+        (incorrectSelections * 10)
+      )
+    );
+    
+    setScore(calculatedScore);
+    setGamePhase('results');
+    
+    // Track game completion in activity history
+    ActivityTracker.trackActivity('Everyday Objects', 'memory_game_completed', {
+      score: calculatedScore,
+      difficulty: difficulty.name,
+      category: selectedCategory
+    });
+    
+    // Provide vocal feedback
+    if (calculatedScore >= 80) {
+      speak("excellentMemoryFeedback");
+    } else if (calculatedScore >= 50) {
+      speak("goodMemoryFeedback");
+    } else {
+      speak("practiceMemoryFeedback");
+    }
+  };
+
+  // Restart the game
+  const restartGame = () => {
+    setGamePhase('setup');
+    setSelectedCategory(null);
+    setObjectsToRemember([]);
+    setAllTestObjects([]);
+    setSelectedObjects([]);
+    setScore(0);
+    
+    speak("tryAgainChooseCategory");
+  };
+
+  // Helper function to get translated object name
+  const getTranslatedObjectName = (objectName) => {
+    // First check if we have a direct translation in our objectTranslations
+    if (objectTranslations[language] && objectTranslations[language][objectName]) {
+      return objectTranslations[language][objectName];
+    }
+    
+    // If not found in our direct translations, try the regular translation system
+    // with capitalized first letter
+    const capitalizedName = objectName.charAt(0).toUpperCase() + objectName.slice(1);
+    const translatedName = translate(capitalizedName);
+    
+    // If the translation system returns the same name, it means no translation was found
+    // In that case, return the original name
+    return translatedName !== capitalizedName ? translatedName : objectName;
+  };
+  
+  // Helper function to get translated object description
+  const getTranslatedObjectDescription = (descriptionKey) => {
+    // First check if we have a direct translation in our descriptionTranslations
+    if (descriptionTranslations[language] && descriptionTranslations[language][descriptionKey]) {
+      return descriptionTranslations[language][descriptionKey];
+    }
+    
+    // If not found in our direct translations, try the regular translation system
+    const translatedDesc = translate(descriptionKey);
+    
+    // If the translation system returns the same key, it means no translation was found
+    // In that case, return a simplified version of the description key
+    return translatedDesc !== descriptionKey ? translatedDesc : descriptionKey.replace('_description', '');
+  };
+
+  // Render difficulty selection
+  const renderDifficultySelection = () => {
+    // Language-specific difficulty translations for display
+    const difficultyTranslations = {
+      hi: {
+        selectDifficulty: 'कठिनाई स्तर चुनें',
+        Easy: 'आसान',
+        Medium: 'मध्यम',
+        Hard: 'कठिन',
+        startGame: 'खेल शुरू करें'
+      },
+      te: {
+        selectDifficulty: 'కష్టం స్థాయిని ఎంచుకోండి',
+        Easy: 'సులభం',
+        Medium: 'మధ్యస్థం',
+        Hard: 'కష్టం',
+        startGame: 'ఆట ప్రారంభించండి'
+      },
+      es: {
+        selectDifficulty: 'Seleccionar dificultad',
+        Easy: 'Fácil',
+        Medium: 'Medio',
+        Hard: 'Difícil',
+        startGame: 'Iniciar juego'
+      },
+      fr: {
+        selectDifficulty: 'Sélectionner la difficulté',
+        Easy: 'Facile',
+        Medium: 'Moyen',
+        Hard: 'Difficile',
+        startGame: 'Commencer le jeu'
+      }
+    };
+    
+    // Get display text in current language
+    const getDifficultyText = (key) => {
+      if (difficultyTranslations[language] && difficultyTranslations[language][key]) {
+        return difficultyTranslations[language][key];
+      }
+      return translate(key);
+    };
+    
+    return (
+      <View style={styles.selectionContainer}>
+        <Text style={styles.sectionTitle}>
+          {getDifficultyText('selectDifficulty')}
+        </Text>
+        
+        <View style={styles.difficultyContainer}>
+          {Object.values(DIFFICULTY).map((level) => {
+            // Get the level name in the current language
+            const levelName = getDifficultyText(level.name);
+            
+            return (
+              <TouchableOpacity
+                key={level.name}
+                style={[
+                  styles.difficultyButton,
+                  difficulty === level && styles.selectedButton,
+                  level === DIFFICULTY.EASY && styles.easyButton,
+                  level === DIFFICULTY.MEDIUM && styles.mediumButton,
+                  level === DIFFICULTY.HARD && styles.hardButton,
+                ]}
+                onPress={() => selectDifficulty(level)}
+              >
+                <Text 
+                  style={[
+                    styles.difficultyButtonText,
+                    difficulty === level && styles.selectedButtonText
+                  ]}
+                >
+                  {levelName}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        
+        <TouchableOpacity
+          style={[
+            styles.startButton,
+            (!selectedCategory || !difficulty) && styles.disabledButton
+          ]}
+          onPress={startGame}
+          disabled={!selectedCategory || !difficulty}
+        >
+          <Ionicons name="play" size={20} color="#FFFFFF" />
+          <Text style={styles.startButtonText}>
+            {getDifficultyText('startGame')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // Render learning phase
+  const renderLearningPhase = () => {
+    // Language-specific text for learning phase
+    const learningPhaseTranslations = {
+      hi: {
+        memorizeTimeLeft: 'याद रखने का समय: ',
+        seconds: 'सेकंड',
+        rememberObjectsAndNames: 'इन वस्तुओं और उनके नामों को याद रखें'
+      },
+      te: {
+        memorizeTimeLeft: 'గుర్తుంచుకోవడానికి సమయం: ',
+        seconds: 'సెకన్లు',
+        rememberObjectsAndNames: 'ఈ వస్తువులను మరియు వాటి పేర్లను గుర్తుంచుకోండి'
+      },
+      es: {
+        memorizeTimeLeft: 'Tiempo para memorizar: ',
+        seconds: 'segundos',
+        rememberObjectsAndNames: 'Recuerda estos objetos y sus nombres'
+      },
+      fr: {
+        memorizeTimeLeft: 'Temps pour mémoriser: ',
+        seconds: 'secondes',
+        rememberObjectsAndNames: 'Souvenez-vous de ces objets et de leurs noms'
+      }
+    };
+    
+    // Get text in the current language or fallback to the translation system
+    const getLearningText = (key) => {
+      if (learningPhaseTranslations[language] && learningPhaseTranslations[language][key]) {
+        return learningPhaseTranslations[language][key];
+      }
+      return translate(key);
+    };
+    
+    return (
+      <Animated.View 
+        style={[styles.gameContainer, { opacity: fadeAnim }]}
+      >
+        <View style={styles.timerContainer}>
+          <Text style={styles.timerText}>
+            {getLearningText('memorizeTimeLeft')} {timeLeft} {getLearningText('seconds')}
+          </Text>
+        </View>
+        
+        <Text style={styles.instructionText}>
+          {getLearningText('rememberObjectsAndNames')}
+        </Text>
+        
+        <View style={styles.objectsGrid}>
+          {objectsToRemember.map((object) => {
+            const translatedName = getTranslatedObjectName(object.name);
+            const translatedDesc = getTranslatedObjectDescription(object.description);
+            
+            return (
+              <View key={object.id} style={styles.objectItem}>
+                <View style={styles.objectImagePlaceholder}>
+                  <Ionicons name={object.icon} size={36} color="#FFFFFF" />
+                </View>
+                <Text style={styles.objectName}>{translatedName}</Text>
+                <Text style={styles.objectDescription}>{translatedDesc}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </Animated.View>
+    );
+  };
+
+  // Render testing phase
+  const renderTestingPhase = () => {
+    // Language-specific text for testing phase
+    const testingPhaseTranslations = {
+      hi: {
+        selectObjectsYouSawBefore: 'वे सभी वस्तुएँ चुनें जिन्हें आपने पहले देखा था',
+        checkAnswers: 'उत्तर जाँचें'
+      },
+      te: {
+        selectObjectsYouSawBefore: 'మీరు ఇంతకు ముందు చూసిన వస్తువులను ఎంచుకోండి',
+        checkAnswers: 'సమాధానాలను తనిఖీ చేయండి'
+      },
+      es: {
+        selectObjectsYouSawBefore: 'Selecciona todos los objetos que viste antes',
+        checkAnswers: 'Comprobar respuestas'
+      },
+      fr: {
+        selectObjectsYouSawBefore: 'Sélectionnez tous les objets que vous avez vus auparavant',
+        checkAnswers: 'Vérifier les réponses'
+      }
+    };
+    
+    // Get text in the current language or fallback to the translation system
+    const getTestingText = (key) => {
+      if (testingPhaseTranslations[language] && testingPhaseTranslations[language][key]) {
+        return testingPhaseTranslations[language][key];
+      }
+      return translate(key);
+    };
+    
+    return (
+      <View style={styles.gameContainer}>
+        <Text style={styles.instructionText}>
+          {getTestingText('selectObjectsYouSawBefore')}
+        </Text>
+        
+        <ScrollView style={styles.objectsScrollView}>
+          <View style={styles.objectsGrid}>
+            {allTestObjects.map((object) => {
+              const translatedName = getTranslatedObjectName(object.name);
+              
+              return (
+                <TouchableOpacity 
+                  key={object.id} 
+                  style={[
+                    styles.objectItem,
+                    selectedObjects.find(obj => obj.id === object.id) && styles.selectedObjectItem
+                  ]}
+                  onPress={() => handleObjectSelection(object)}
+                >
+                  <View style={styles.objectImagePlaceholder}>
+                    <Ionicons name={object.icon} size={36} color="#FFFFFF" />
+                  </View>
+                  <Text style={styles.objectName}>{translatedName}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+        
+        <TouchableOpacity 
+          style={styles.submitButton}
+          onPress={checkResults}
+        >
+          <Text style={styles.submitButtonText}>{getTestingText('checkAnswers')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // Render results phase
+  const renderResultsPhase = () => {
+    // Language-specific text for results phase
+    const resultsPhaseTranslations = {
+      hi: {
+        yourScore: 'आपका स्कोर',
+        youCorrectlyRemembered: `आपने ${correctCount} में से ${objectsToRemember.length} वस्तुओं को सही ढंग से याद रखा।`,
+        objectsToRememberWere: 'याद रखने वाली वस्तुएँ थीं',
+        youSelectedExtraObjects: 'आपने ये अतिरिक्त वस्तुएँ भी चुनीं',
+        playAgain: 'फिर से खेलें',
+        newGame: 'नया खेल'
+      },
+      te: {
+        yourScore: 'మీ స్కోరు',
+        youCorrectlyRemembered: `మీరు ${objectsToRemember.length}లో ${correctCount} వస్తువులను సరిగ్గా గుర్తుంచుకున్నారు.`,
+        objectsToRememberWere: 'గుర్తుంచుకోవలసిన వస్తువులు',
+        youSelectedExtraObjects: 'మీరు ఈ అదనపు వస్తువులను కూడా ఎంచుకున్నారు',
+        playAgain: 'మళ్లీ ఆడు',
+        newGame: 'కొత్త ఆట'
+      },
+      es: {
+        yourScore: 'Tu puntuación',
+        youCorrectlyRemembered: `Has recordado correctamente ${correctCount} de ${objectsToRemember.length} objetos.`,
+        objectsToRememberWere: 'Los objetos a recordar eran',
+        youSelectedExtraObjects: 'También seleccionaste estos objetos adicionales',
+        playAgain: 'Jugar de nuevo',
+        newGame: 'Nuevo juego'
+      },
+      fr: {
+        yourScore: 'Votre score',
+        youCorrectlyRemembered: `Vous avez correctement mémorisé ${correctCount} objets sur ${objectsToRemember.length}.`,
+        objectsToRememberWere: 'Les objets à mémoriser étaient',
+        youSelectedExtraObjects: 'Vous avez également sélectionné ces objets supplémentaires',
+        playAgain: 'Rejouer',
+        newGame: 'Nouveau jeu'
+      }
+    };
+    
+    // Get text in the current language or fallback to the translation system
+    const getResultsText = (key) => {
+      if (resultsPhaseTranslations[language] && resultsPhaseTranslations[language][key]) {
+        return resultsPhaseTranslations[language][key];
+      }
+      return translate(key, { 
+        count: correctCount, 
+        total: objectsToRemember.length 
+      });
+    };
+    
+    // Calculate correctly remembered object count
+    const correctCount = selectedObjects.filter(
+      selected => objectsToRemember.find(obj => obj.id === selected.id)
+    ).length;
+    
+    return (
+      <View style={styles.gameContainer}>
+        <Text style={styles.resultTitle}>
+          {getResultsText('yourScore')}: {score}%
+        </Text>
+        
+        <View style={styles.resultDetails}>
+          <Text style={styles.resultText}>
+            {getResultsText('youCorrectlyRemembered')}
+          </Text>
+          
+          {score < 100 && (
+            <View style={styles.resultSection}>
+              <Text style={styles.resultSectionTitle}>{getResultsText('objectsToRememberWere')}:</Text>
+              {objectsToRemember.map((object) => {
+                const translatedName = getTranslatedObjectName(object.name);
+                
+                return (
+                  <View key={object.id} style={styles.resultItemRow}>
+                    <Ionicons 
+                      name={selectedObjects.find(obj => obj.id === object.id) ? "checkmark-circle" : "close-circle"} 
+                      size={20} 
+                      color={selectedObjects.find(obj => obj.id === object.id) ? "#4CAF50" : "#F44336"} 
+                    />
+                    <Text style={styles.resultItemText}>{translatedName}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+          
+          {selectedObjects.some(selected => !objectsToRemember.find(obj => obj.id === selected.id)) && (
+            <View style={styles.resultSection}>
+              <Text style={styles.resultSectionTitle}>{getResultsText('youSelectedExtraObjects')}:</Text>
+              {selectedObjects
+                .filter(selected => !objectsToRemember.find(obj => obj.id === selected.id))
+                .map((object) => {
+                  const translatedName = getTranslatedObjectName(object.name);
+                  
+                  return (
+                    <View key={object.id} style={styles.resultItemRow}>
+                      <Ionicons name="close-circle" size={20} color="#F44336" />
+                      <Text style={styles.resultItemText}>{translatedName}</Text>
+                    </View>
+                  );
+                })
+              }
+            </View>
+          )}
+        </View>
+        
+        <View style={styles.resultButtonsContainer}>
+          <TouchableOpacity 
+            style={[styles.resultButton, styles.playAgainButton]}
+            onPress={() => {
+              setGamePhase('learning');
+              setTimeLeft(difficulty.showTimeSeconds);
+              startGame();
+            }}
+          >
+            <Ionicons name="refresh" size={20} color="#FFFFFF" />
+            <Text style={styles.resultButtonText}>{getResultsText('playAgain')}</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.resultButton, styles.newGameButton]}
+            onPress={restartGame}
+          >
+            <Ionicons name="home" size={20} color="#FFFFFF" />
+            <Text style={styles.resultButtonText}>{getResultsText('newGame')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  // Get UI text in the current language or fall back to translation system
+  const getUIText = (key) => {
+    const uiTranslations = {
+      hi: {
+        backToActivities: 'गतिविधियों पर वापस जाएँ',
+        everydayObjects: 'रोजमर्रा की वस्तुएँ'
+      },
+      te: {
+        backToActivities: 'కార్యకలాపాలకు తిరిగి వెళ్ళండి',
+        everydayObjects: 'రోజువారీ వస్తువులు'
+      },
+      es: {
+        backToActivities: 'Volver a actividades',
+        everydayObjects: 'Objetos cotidianos'
+      },
+      fr: {
+        backToActivities: 'Retour aux activités',
+        everydayObjects: 'Objetos du quotidien'
+      }
+    };
+    
+    if (uiTranslations[language] && uiTranslations[language][key]) {
+      return uiTranslations[language][key];
+    }
+    return translate(key);
+  };
+  
+  // Get introduction text in the current language
+  const getIntroText = (key) => {
+    const introTranslations = {
+      hi: {
+        everydayObjectsIntro: 'इस गेम में, आप घर में पाई जाने वाली आम वस्तुओं को देखेंगे और उन्हें याद रखने की कोशिश करेंगे। यह आपकी स्मृति को मजबूत करने में मदद करेगा।'
+      },
+      te: {
+        everydayObjectsIntro: 'ఈ ఆటలో, మీరు ఇంటిలో కనిపించే సాధారణ వస్తువులను చూస్తారు మరియు వాటిని గుర్తుంచుకోవడానికి ప్రయత్నిస్తారు. ఇది మీ జ్ఞాపకశక్తిని బలోపేతం చేయడానికి సహాయపడుతుంది.'
+      },
+      es: {
+        everydayObjectsIntro: 'En este juego, verás objetos comunes encontrados en el hogar e intentarás recordarlos. Esto ayudará a fortalecer tu memoria.'
+      },
+      fr: {
+        everydayObjectsIntro: 'Dans ce jeu, vous verrez des objets courants trouvés dans la maison et essaierez de vous en souvenir. Cela aidera à renforcer votre mémoire.'
+      }
+    };
+    
+    if (introTranslations[language] && introTranslations[language][key]) {
+      return introTranslations[language][key];
+    }
+    return translate(key);
+  };
+  
+  // Function to get household chore translations
+  const getHouseChoreTranslation = (key) => {
+    if (houseChoreTranslations[language] && houseChoreTranslations[language][key]) {
+      return houseChoreTranslations[language][key];
+    }
+    return key; // Return the original key if no translation found
+  };
+
+  return (
+    <View style={styles.background}>
+      <ScrollView 
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>{getUIText("everydayObjects")}</Text>
+          <TouchableOpacity onPress={toggleVoice} style={styles.controlButton}>
+            <Ionicons 
+              name={isVoiceEnabled ? "volume-high" : "volume-mute"} 
+              size={24} 
+              color={isVoiceEnabled ? "#005BBB" : "#888"} 
+            />
+          </TouchableOpacity>
+        </View>
+        
+        {gamePhase === 'setup' && (
+          <>
+            <Text style={styles.introText}>
+              {getIntroText("everydayObjectsIntro")}
+            </Text>
+            {renderCategorySelection()}
+            {selectedCategory && renderDifficultySelection()}
+          </>
+        )}
+        
+        {gamePhase === 'learning' && renderLearningPhase()}
+        {gamePhase === 'testing' && renderTestingPhase()}
+        {gamePhase === 'results' && renderResultsPhase()}
+        
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => {
+            if (timerRef.current) clearInterval(timerRef.current);
+            stopSpeech();
+            navigation.goBack();
+          }}
+        >
+          <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
+          <Text style={styles.backButtonText}>{getUIText('backToActivities')}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  background: {
+    flex: 1,
+    backgroundColor: '#F0F4F8',
+  },
+  container: {
+    flexGrow: 1,
+    padding: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 3,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#005BBB',
+  },
+  controlButton: {
+    padding: 8,
+    backgroundColor: '#F0F4F8',
+    borderRadius: 20,
+  },
+  introText: {
+    fontSize: 16,
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    padding: 15,
+    borderRadius: 8,
+    lineHeight: 22,
+  },
+  selectionContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  categoryButton: {
+    backgroundColor: '#F0F4F8',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 10,
+    elevation: 1,
+  },
+  selectedButton: {
+    backgroundColor: '#005BBB',
+  },
+  categoryButtonText: {
+    fontSize: 16,
+    color: '#333',
+    textAlign: 'center',
+  },
+  selectedButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  difficultyContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 10,
+  },
+  difficultyButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    marginHorizontal: 4,
+    borderRadius: 8,
+    position: 'relative',
+  },
+  easyButton: {
+    backgroundColor: '#4CAF50',
+  },
+  mediumButton: {
+    backgroundColor: '#FFC107',
+  },
+  hardButton: {
+    backgroundColor: '#F44336',
+  },
+  difficultyButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  checkmark: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startButton: {
+    backgroundColor: '#005BBB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  disabledButton: {
+    backgroundColor: '#CCCCCC',
+  },
+  startButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginLeft: 8,
+  },
+  gameContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
+  },
+  timerContainer: {
+    backgroundColor: '#005BBB',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 15,
+    alignItems: 'center',
+  },
+  timerText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  instructionText: {
+    fontSize: 18,
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 15,
+    fontWeight: 'bold',
+  },
+  objectsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+  },
+  objectsScrollView: {
+    maxHeight: 400,
+  },
+  objectItem: {
+    width: '45%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 15,
+    alignItems: 'center',
+    elevation: 1,
+  },
+  selectedObjectItem: {
+    borderWidth: 2,
+    borderColor: '#005BBB',
+    backgroundColor: '#E3F2FD',
+  },
+  objectImagePlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#005BBB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  objectImageText: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    fontWeight: 'bold',
+  },
+  objectName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 5,
+    textAlign: 'center',
+  },
+  objectDescription: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+  submitButton: {
+    backgroundColor: '#4CAF50',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  resultTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#005BBB',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  resultDetails: {
+    marginBottom: 20,
+  },
+  resultText: {
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  resultSection: {
+    backgroundColor: '#F0F4F8',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  resultSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  resultItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  resultItemText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 10,
+  },
+  resultButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  resultButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    width: '45%',
+  },
+  playAgainButton: {
+    backgroundColor: '#4CAF50',
+  },
+  newGameButton: {
+    backgroundColor: '#FF5722',
+  },
+  resultButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 14,
+    marginLeft: 6,
+  },
+  backButton: {
+    backgroundColor: '#005BBB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  backButtonText: {
+    color: '#FFFFFF',
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+});
+
+export default EverydayObjectsScreen;

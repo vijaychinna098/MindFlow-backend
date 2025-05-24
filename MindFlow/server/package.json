@@ -1,0 +1,15 @@
+{
+  "name": "alz-fcm-server",
+  "version": "1.0.0",
+  "description": "FCM Server for Alzheimer's Care App",
+  "main": "firebase-admin.js",
+  "scripts": {
+    "send-test": "node send-test-notification.js",
+    "send-admin": "node send-admin-notification.js",
+    "setup": "echo \"Please download your service account key and save it as serviceAccountKey.json in this directory.\""
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "firebase-admin": "^11.11.0"
+  }
+} 

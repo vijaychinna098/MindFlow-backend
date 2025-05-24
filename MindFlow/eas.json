@@ -1,0 +1,59 @@
+{
+  "cli": {
+    "version": ">= 7.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "ios": {
+        "simulator": true
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:3001"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:3001"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview2": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:3001"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://mindflow-backend-1vcl.onrender.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./pc-api-key.json",
+        "track": "internal"
+      }
+    }
+  }
+}

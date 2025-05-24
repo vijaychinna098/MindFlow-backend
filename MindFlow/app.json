@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "MindFlow",
+    "slug": "alz",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/mindflow-brain-logo.jpeg",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/images/mindflow-brain-logo.jpeg",
+      "resizeMode": "contain",
+      "backgroundColor": "#000D20"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vijaychinna.alz",
+      "config": {
+        "googleMapsApiKey": "AIzaSyDrvWr_RhEky9lKUgeyTxAipD_lhNJqH2s"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/mindflow-brain-logo.jpeg",
+        "backgroundColor": "#000D20"
+      },
+      "package": "com.vijaychinna.alz",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "POST_NOTIFICATIONS",
+        "INTERNET"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDrvWr_RhEky9lKUgeyTxAipD_lhNJqH2s"
+        }
+      },
+      "versionCode": 2
+    },
+    "web": {
+      "favicon": "./assets/images/mindflow-brain-logo.jpeg"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "07da51b8-9e96-403f-b068-e3c0c07a1694"
+      },
+      "apiUrl": "https://mindflow-backend-1vcl.onrender.com",
+      "router": {
+        "origin": false
+      }
+    },
+    "plugins": [
+      "expo-build-properties",
+      "expo-router"
+    ],
+    "owner": "vijaykumar098",
+    "experiments": {
+      "tsconfigPaths": true
+    },
+    "metro": {
+      "server": {
+        "port": 8081
+      }
+    }
+  }
+}

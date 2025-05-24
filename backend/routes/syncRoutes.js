@@ -20,6 +20,92 @@ router.get('/', (req, res) => {
   });
 });
 
+// Profile sync endpoint for compatibility with the app
+router.post('/profile', async (req, res) => {
+  try {
+    if (!req.body || !req.body.clientData || !req.body.clientData.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid sync data provided'
+      });
+    }
+    
+    const { clientData, lastSyncTime } = req.body;
+    const email = clientData.email.toLowerCase().trim();
+    console.log(`Profile sync request for user: ${email}`);
+    
+    // Find existing user in database
+    let user = await User.findOne({ email });
+    
+    if (user) {
+      console.log(`Existing user found for profile sync: ${email}`);
+      
+      // Special handling for profile image to prevent data loss
+      if (!clientData.profileImage && user.profileImage) {
+        console.log('Client missing profile image, preserving existing image');
+        clientData.profileImage = user.profileImage;
+      }
+      
+      // Special handling for name to prevent data loss
+      if (!clientData.name && user.name) {
+        console.log('Client missing name, preserving existing name');
+        clientData.name = user.name;
+      }
+      
+      // Update with merged fields
+      user = await User.findOneAndUpdate(
+        { email },
+        { 
+          $set: {
+            ...clientData,
+            lastSyncTime: new Date()
+          }
+        },
+        { new: true }
+      );
+    } else {
+      console.log(`Creating new user during profile sync: ${email}`);
+      user = await User.create({
+        ...clientData,
+        email,
+        lastSyncTime: new Date()
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phone: user.phone || '',
+        address: user.address || '',
+        age: user.age || '',
+        medicalInfo: user.medicalInfo || {
+          conditions: '',
+          medications: '',
+          allergies: '',
+          bloodType: ''
+        },
+        homeLocation: user.homeLocation,
+        reminders: user.reminders || [],
+        memories: user.memories || [],
+        emergencyContacts: user.emergencyContacts || [],
+        caregiverEmail: user.caregiverEmail,
+        lastSyncTime: user.lastSyncTime
+      }
+    });
+  } catch (error) {
+    console.error('Error in profile sync:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync profile data',
+      error: error.message
+    });
+  }
+});
+
 // Endpoint for checking if a user has updates
 router.get('/check/:email', async (req, res) => {
   try {
@@ -416,4 +502,4 @@ router.get('/image/:email', async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;

@@ -24,6 +24,141 @@ router.get('/', (req, res) => {
   });
 });
 
+// Dedicated sync handler that can be exported for direct access
+const syncHandler = async (req, res, next) => {
+  try {
+    if (!req.body || !req.body.clientData || !req.body.clientData.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid sync data provided'
+      });
+    }
+    
+    const { clientData, lastSyncTime } = req.body;
+    const email = clientData.email.toLowerCase().trim();
+    console.log(`Unified sync request for user: ${email}`);
+    
+    // Find existing user in database
+    let user = await User.findOne({ email });
+    let conflicts = [];
+    
+    if (user) {
+      console.log(`Existing user found: ${email}, comparing data for sync`);
+      
+      // Create a merged profile with server having priority
+      const mergedData = { ...clientData };
+      
+      // Handle profile image - never lose an image during sync
+      if (!clientData.profileImage && user.profileImage) {
+        console.log('Client missing profile image, using server image');
+        mergedData.profileImage = user.profileImage;
+      } else if (clientData.profileImage && !user.profileImage) {
+        console.log('Server missing profile image, using client image');
+      } else if (clientData.profileImage && user.profileImage && 
+                 clientData.profileImage !== user.profileImage) {
+        console.log('Profile image conflict detected, preserving both versions');
+        // Use client version but record conflict
+        conflicts.push({
+          field: 'profileImage',
+          clientValue: clientData.profileImage.substring(0, 30) + '...',
+          serverValue: user.profileImage.substring(0, 30) + '...'
+        });
+      }
+      
+      // Handle name conflicts - very important for user identity
+      if (clientData.name && user.name && clientData.name !== user.name) {
+        console.log(`Name conflict: Client "${clientData.name}" vs Server "${user.name}"`);
+        // For name conflicts, always take the most recent change
+        const clientLastUpdate = new Date(clientData.lastSyncTime || 0);
+        const serverLastUpdate = new Date(user.lastSyncTime || 0);
+        
+        if (clientLastUpdate > serverLastUpdate) {
+          console.log(`Using client name (newer): ${clientData.name}`);
+        } else {
+          console.log(`Using server name (newer): ${user.name}`);
+          mergedData.name = user.name;
+        }
+        
+        conflicts.push({
+          field: 'name',
+          clientValue: clientData.name,
+          serverValue: user.name,
+          resolution: mergedData.name
+        });
+      }
+      
+      // Handle phone number conflicts
+      if (clientData.phone && user.phone && clientData.phone !== user.phone) {
+        console.log(`Phone conflict: Client "${clientData.phone}" vs Server "${user.phone}"`);
+        conflicts.push({
+          field: 'phone',
+          clientValue: clientData.phone,
+          serverValue: user.phone
+        });
+      }
+      
+      // Update user with merged data
+      user = await User.findOneAndUpdate(
+        { email },
+        { 
+          $set: {
+            ...mergedData,
+            lastSyncTime: new Date()
+          }
+        },
+        { new: true }
+      );
+    } else {
+      console.log(`Creating new user during sync: ${email}`);
+      user = await User.create({
+        ...clientData,
+        email,
+        lastSyncTime: new Date()
+      });
+    }
+    
+    // Return the complete, merged profile
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        profileImage: user.profileImage,
+        phone: user.phone || '',
+        address: user.address || '',
+        age: user.age || '',
+        medicalInfo: user.medicalInfo || {
+          conditions: '',
+          medications: '',
+          allergies: '',
+          bloodType: ''
+        },
+        homeLocation: user.homeLocation,
+        reminders: user.reminders || [],
+        memories: user.memories || [],
+        emergencyContacts: user.emergencyContacts || [],
+        caregiverEmail: user.caregiverEmail,
+        lastSyncTime: user.lastSyncTime
+      },
+      conflicts: conflicts.length > 0 ? conflicts : null
+    });
+  } catch (error) {
+    console.error('Error in unified sync:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to sync user data',
+      error: error.message
+    });
+  }
+};
+
+// Add endpoint that uses the handler
+router.post('/sync', syncHandler);
+
+// Export the handler for direct use
+router.syncHandler = syncHandler;
+
 // New MongoDB storage endpoint for mobile profile storage
 router.post('/store-mongodb', async (req, res) => {
   try {
